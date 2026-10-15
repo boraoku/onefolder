@@ -215,7 +215,7 @@ expression: events
     "totalTransfers": 1,
     "checks": 43,
     "totalChecks": 43,
-    "listed": 57,
+    "listed": "[listed]",
     "errors": 0,
     "deletes": 5,
     "eta": null,

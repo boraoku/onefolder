@@ -529,12 +529,34 @@ mod tests {
         } else {
             normalise(events, progress)
         };
+        let events = redact_listed(events);
         insta::with_settings!({
             snapshot_path => concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots"),
             prepend_module_to_snapshot => false,
         }, {
             insta::assert_json_snapshot!(format!("events_{name}"), events);
         });
+    }
+
+    /// The marker that stands in for a stats line's `listed` in snapshots.
+    const LISTED: &str = "[listed]";
+
+    /// Replaces each stats line's `listed` count with [`LISTED`]. How many
+    /// entries rclone has listed when it prints its final stats depends on
+    /// timing: two recordings with the same rclone give different counts
+    /// (bisync-plan gave 67, 68 and 75). OneFolder only shows the count as
+    /// a live figure, so the snapshots keep that it is there, not its value;
+    /// `listed_is_decoded` checks the value from a fixed line.
+    fn redact_listed(events: Vec<Event>) -> serde_json::Value {
+        let mut value = serde_json::to_value(events).expect("events serialise");
+        for event in value.as_array_mut().into_iter().flatten() {
+            if event["event"] == "stats" {
+                if let Some(listed) = event.get_mut("listed").filter(|l| !l.is_null()) {
+                    *listed = LISTED.into();
+                }
+            }
+        }
+        value
     }
 
     #[test]
@@ -699,6 +721,31 @@ mod tests {
         assert!(kinds.contains(&("new.txt".into(), TransferKind::New)));
         assert!(kinds.contains(&("Projects/2026/budget.xlsx".into(), TransferKind::Replaced)));
         assert!(kinds.contains(&("touched.txt".into(), TransferKind::ModTime)));
+    }
+
+    #[test]
+    fn listed_is_decoded() {
+        // A stats line as rclone 1.75.2 prints it, with `listed`; the
+        // snapshots redact the count, since it depends on timing.
+        let line = r#"{"time":"2026-10-15T18:17:45.272652+11:00","level":"notice","msg":"\nTransferred:   \t          0 B / 0 B, -, 0 B/s, ETA -\nChecks:                 5 / 5, 100%, Listed 16\nElapsed time:         0.0s\n\n","stats":{"bytes":0,"checks":5,"deletedDirs":0,"deletes":0,"elapsedTime":0.000475167,"errors":0,"eta":null,"fatalError":false,"listed":16,"renames":0,"retryError":false,"serverSideCopies":0,"serverSideCopyBytes":0,"serverSideMoveBytes":0,"serverSideMoves":0,"speed":0,"totalBytes":0,"totalChecks":5,"totalTransfers":0,"transferTime":0.000036125,"transfers":0},"source":"accounting/stats.go:549"}"#;
+        match decode(line) {
+            Event::Stats(s) => {
+                assert_eq!((s.listed, s.checks, s.total_checks), (Some(16), 5, 5));
+            }
+            other => panic!("{other:?}"),
+        }
+        // Older releases leave it out.
+        match decode(r#"{"level":"notice","msg":"s","stats":{"checks":5}}"#) {
+            Event::Stats(s) => assert_eq!(s.listed, None),
+            other => panic!("{other:?}"),
+        }
+        // In a snapshot the count becomes the marker; a missing one stays null.
+        let redacted = redact_listed(vec![
+            decode(line),
+            decode(r#"{"level":"notice","msg":"s","stats":{"checks":5}}"#),
+        ]);
+        assert_eq!(redacted[0]["listed"], LISTED);
+        assert!(redacted[1]["listed"].is_null());
     }
 
     #[test]

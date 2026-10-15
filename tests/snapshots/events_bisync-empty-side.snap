@@ -50,7 +50,7 @@ expression: events
     "totalTransfers": 0,
     "checks": 4,
     "totalChecks": 4,
-    "listed": 4,
+    "listed": "[listed]",
     "errors": 1,
     "deletes": 0,
     "eta": null,
