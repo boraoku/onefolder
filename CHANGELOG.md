@@ -6,6 +6,62 @@ versioning; the release workflow publishes a version when its tag (such as
 the Unreleased section to `## <version> - <date>`, which dist uses as the
 release notes.
 
+## 0.2.0 - 2026-10-16
+
+### Linux and Windows (WSL)
+
+- OneFolder runs on Linux (x86_64 and ARM64, glibc 2.35 or newer) and on
+  Windows through WSL (WSL 2, and WSL 1), as well as on macOS. Releases
+  include Linux builds: the shell installer works on Linux and WSL, and
+  `brew install boraoku/apps/onefolder` works with Homebrew on Linux.
+  Without Homebrew, install rclone from https://rclone.org/install/;
+  `doctor` and the rclone-missing message say so on Linux, and name
+  `brew upgrade rclone` only when Homebrew is there.
+- External drives are checked on Linux as on a Mac. Any file system
+  mounted on its own (at `/media/<you>/<label>`, `/run/media`, `/mnt`,
+  `/data`, `/srv/backup` or anywhere else) is recorded at setup by its
+  file system UUID (or partition UUID, or device and label) from `lsblk`,
+  and checked before every run: an unplugged drive, the wrong drive, a
+  drive mounted somewhere else and a read-only drive (including one whose
+  file system went read-only after an error) are refused with the same
+  messages as on a Mac. Only the system disk is left unchecked: `/`, the
+  standard system mount points such as `/home`, `/var` and `/boot`, and
+  memory file systems such as `/tmp`; setup names the mount a folder is
+  on. A folder under `/media`, `/run/media` or `/mnt` that is not on a
+  mounted drive is refused at setup. A btrfs subvolume or a bind mount of
+  a drive's folder is recorded as that folder, so another one mounted in
+  its place is the wrong drive, and a file system mounted over the drive
+  later counts as the drive being gone. Network shares and file systems
+  with no block device get the weaker device and name check.
+- Under WSL, a Windows drive (`/mnt/d` and so on) is identified by its
+  Windows volume GUID and label, which OneFolder asks Windows for through
+  PowerShell (a drive check may take up to 30 seconds there).
+  `/mnt/c`, the Windows system drive, counts as the system disk, so a
+  destination under `/mnt/c/Users/...` is allowed and not checked. A
+  drive plugged in after WSL started is not mounted by WSL, and the "not
+  mounted" message says how (`sudo mount -t drvfs E: /mnt/e`, with the
+  letter Windows has the drive at now). A drive mounted at another folder
+  is reported as mounted somewhere else. With WSL's Windows interop off,
+  the check says so and how to turn it on.
+- Moved files and case: on Linux, where most file systems tell
+  `Report.pdf` and `report.pdf` apart, a rename that only changes case is
+  now a move between two such folders (ext4, btrfs, xfs and the like),
+  offered like any other move. Where either side ignores case (OneDrive,
+  every folder on a Mac, FAT, exFAT, NTFS and HFS+ drives, network shares,
+  Windows drives under WSL, any other file system, and a casefolded ext4
+  or f2fs folder), it is still the same file.
+- Messages say "this computer" on Linux and WSL where a Mac says "this
+  Mac", and two-way counts say `2 here` for `2 to Mac`. On a Mac every
+  message is unchanged.
+- The browser's `v` key opens the drives folder of the system:
+  `/Volumes` on a Mac, `/media/<you>` (or `/run/media/<you>`, `/media`,
+  `/mnt`) on Linux, `/mnt` under WSL; the job form's example drive path
+  follows it.
+- The run lock and bisync's lock read the boot time and process names
+  from `/proc` on Linux.
+- `just fixtures` records rclone's output into a temporary folder and
+  never rewrites the committed fixtures.
+
 ## 0.1.0 - 2026-10-15
 
 The first release, built in seven milestones, and the changes after them.
