@@ -28,14 +28,14 @@ expression: events
     "event": "skipped",
     "action": "set directory modification time",
     "object": "Projects",
-    "size": 96,
+    "size": "[dir]",
     "is_dir": true
   },
   {
     "event": "skipped",
     "action": "set directory modification time",
     "object": "Projects/2026",
-    "size": 96,
+    "size": "[dir]",
     "is_dir": true
   },
   {

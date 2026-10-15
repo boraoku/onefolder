@@ -41,13 +41,7 @@ expression: events
     "event": "notice",
     "level": "info",
     "message": "Made directory with metadata (mtime=#-#-#T#:#:#.#<offset>)",
-    "object": "sub"
-  },
-  {
-    "event": "notice",
-    "level": "info",
-    "message": "Made directory with metadata (mtime=#-#-#T#:#:#.#<offset>)",
-    "object": "sub/deep"
+    "object": "Notes"
   },
   {
     "event": "notice",
@@ -59,7 +53,13 @@ expression: events
     "event": "notice",
     "level": "info",
     "message": "Made directory with metadata (mtime=#-#-#T#:#:#.#<offset>)",
-    "object": "Notes"
+    "object": "sub"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Made directory with metadata (mtime=#-#-#T#:#:#.#<offset>)",
+    "object": "sub/deep"
   },
   {
     "event": "notice",

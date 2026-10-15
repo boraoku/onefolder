@@ -344,7 +344,7 @@ mod tests {
     fn normalise(events: Vec<Event>, progress: bool) -> Vec<Event> {
         let mut out: Vec<Event> = Vec::new();
         let mut run: Vec<Event> = Vec::new();
-        let key = |e: &Event| serde_json::to_string(e).unwrap_or_default();
+        let key = sort_key;
         let flush = |run: &mut Vec<Event>, out: &mut Vec<Event>| {
             run.sort_by_key(key);
             out.append(run);
@@ -452,6 +452,14 @@ mod tests {
         assert_eq!(mask_text("Zone Zebra 5Zq"), "Zone Zebra #Zq");
     }
 
+    /// The order of per-file lines that finish in any order: the line as
+    /// the snapshot shows it (times in notices masked), so a notice's real
+    /// time never decides where it goes.
+    fn sort_key(e: &Event) -> String {
+        let masked = mask_notices(vec![e.clone()]);
+        serde_json::to_string(&masked).unwrap_or_default()
+    }
+
     fn mask_notices(events: Vec<Event>) -> Vec<Event> {
         let mut out: Vec<Event> = Vec::new();
         for event in events {
@@ -499,7 +507,7 @@ mod tests {
                     }
             )
         };
-        let key = |e: &Event| serde_json::to_string(e).unwrap_or_default();
+        let key = sort_key;
         let last_stats = events.iter().rev().find_map(|e| match e {
             Event::Stats(s) => Some(s.clone()),
             _ => None,
@@ -552,18 +560,29 @@ mod tests {
     /// The marker that stands in for a stats line's `listed` in snapshots.
     const LISTED: &str = "[listed]";
 
+    /// The marker that stands in for a folder's size in snapshots.
+    const DIR_SIZE: &str = "[dir]";
+
     /// Replaces each stats line's `listed` count with [`LISTED`]. How many
     /// entries rclone has listed when it prints its final stats depends on
     /// timing: two recordings with the same rclone give different counts
     /// (bisync-plan gave 67, 68 and 75). OneFolder only shows the count as
     /// a live figure, so the snapshots keep that it is there, not its value;
-    /// `listed_is_decoded` checks the value from a fixed line.
+    /// `listed_is_decoded` checks the value from a fixed line. A folder's
+    /// size (an event with `is_dir`) becomes [`DIR_SIZE`] the same way.
     fn redact_listed(events: Vec<Event>) -> serde_json::Value {
         let mut value = serde_json::to_value(events).expect("events serialise");
         for event in value.as_array_mut().into_iter().flatten() {
             if event["event"] == "stats" {
                 if let Some(listed) = event.get_mut("listed").filter(|l| !l.is_null()) {
                     *listed = LISTED.into();
+                }
+            }
+            // A folder's size is the file system's (96 on APFS, 60 on
+            // btrfs, 4096 on ext4), not rclone's.
+            if event["is_dir"] == true {
+                if let Some(size) = event.get_mut("size").filter(|s| !s.is_null()) {
+                    *size = DIR_SIZE.into();
                 }
             }
         }

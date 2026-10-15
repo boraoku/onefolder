@@ -357,7 +357,7 @@ expression: events
     "event": "skipped",
     "action": "set directory modification time",
     "object": "Notes",
-    "size": 96,
+    "size": "[dir]",
     "is_dir": true
   },
   {
