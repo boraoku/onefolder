@@ -12,7 +12,7 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "homebrew"]
 # The Homebrew tap the formula is pushed to.
-tap = "boraoku/homebrew-onefolder"
+tap = "boraoku/homebrew-apps"
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 # Publish jobs to run in CI: the formula to the tap, and the universal

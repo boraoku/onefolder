@@ -267,7 +267,7 @@ Releases are built by [cargo-dist](https://opensource.axo.dev/cargo-dist/), conf
 
 - targets `aarch64-apple-darwin` and `x86_64-apple-darwin`, built with the `dist` profile (release with thin LTO);
 - installers: a shell installer and a Homebrew formula (the formula picks the build for the Mac's processor and `depends_on "rclone"`);
-- the formula is published to the tap `boraoku/homebrew-onefolder`, so users run `brew install boraoku/onefolder/onefolder`;
+- the formula is published to the tap `boraoku/homebrew-apps`, so users run `brew install boraoku/apps/onefolder`;
 - a custom publish job, `.github/workflows/publish-universal.yml`, downloads the two macOS archives from the release, joins them with `scripts/universal.sh` (`lipo`), checks both architectures are there and the binary runs, and uploads `onefolder-universal-apple-darwin.tar.xz` with its checksum. dist itself has no universal-binary option for executables.
 
 The toolchain is pinned in `rust-toolchain.toml` (1.93.1), so local builds and CI use the same compiler.
@@ -283,7 +283,7 @@ To cut a release:
    git push origin v0.1.0
    ```
 
-Pushing a tag of the form `vX.Y.Z` starts `.github/workflows/release.yml`, which cargo-dist generates. It builds both targets, creates the GitHub release with the archives, checksums and installers, adds the universal binary, and pushes the updated formula to `boraoku/homebrew-onefolder`. Pushing to the tap needs a repository secret named `HOMEBREW_TAP_TOKEN`, a token with write access to the tap repository. Do not edit `release.yml` by hand; change `dist-workspace.toml` and regenerate it with `dist generate`.
+Pushing a tag of the form `vX.Y.Z` starts `.github/workflows/release.yml`, which cargo-dist generates. It builds both targets, creates the GitHub release with the archives, checksums and installers, adds the universal binary, and pushes the updated formula to `boraoku/homebrew-apps`. Pushing to the tap needs a repository secret named `HOMEBREW_TAP_TOKEN`, a token with write access to the tap repository. Do not edit `release.yml` by hand; change `dist-workspace.toml` and regenerate it with `dist generate`.
 
 **The owner name.** The repository owner `boraoku` appears in `Cargo.toml`, `dist-workspace.toml`, `README.md` and `docs/ARCHITECTURE.md`; after changing it, `dist generate` rewrites `.github/workflows/release.yml`, and `dist generate --check` in CI fails if that step is forgotten.
 
