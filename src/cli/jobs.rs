@@ -49,12 +49,21 @@ Destinations from flags:
 
 Without flags, on a terminal, the job form opens instead.";
 
+/// [`DESTINATION_HELP`] with this platform's example drive path
+/// (`/Volumes/Backup/Documents` on a Mac, `/media/<you>/...` on Linux).
+fn destination_help() -> String {
+    DESTINATION_HELP.replace(
+        "/Volumes/Backup/Documents",
+        &crate::platform::placeholder_drive_path(),
+    )
+}
+
 #[derive(Debug, Subcommand)]
 pub enum JobsAction {
     /// Print jobs and their destinations (bare `jobs` opens the interactive list on a terminal)
     List,
     /// Add a job with the form, or from flags
-    #[command(after_help = DESTINATION_HELP)]
+    #[command(after_help = destination_help())]
     Add {
         /// Name for the new job, such as documents
         name: Option<String>,
@@ -62,7 +71,7 @@ pub enum JobsAction {
         spec: JobFlags,
     },
     /// Edit a job with the form, or from flags
-    #[command(after_help = DESTINATION_HELP)]
+    #[command(after_help = destination_help())]
     Edit {
         /// The job to edit; without it, pick from a list
         name: Option<String>,
@@ -819,10 +828,11 @@ fn long_name_notes(job: &Job, accounts: &[Account]) -> Vec<Note> {
             (
                 format!(
                     "{} {d}: the source and this destination together are too long for \
-                     bisync's working file names (macOS allows {} bytes in a file name), so \
+                     bisync's working file names ({} allows {} bytes in a file name), so \
                      two-way runs would stop with \"names too long\". Use a shorter source or \
                      destination folder.",
                     theme::SKIPPED,
+                    crate::platform::words().file_system,
                     crate::rclone::bisync::NAME_MAX
                 ),
                 Tone::Warning,
@@ -1281,9 +1291,10 @@ async fn release(paths: &Paths, name: &str, folder: &str, dry_run: bool) -> Resu
         let place = crate::sync::twoway::place(kind);
         let note = format!(
             "{} {display} ({id}): syncing it again. The next two-way run copies {} back to \
-             this Mac from {place}, because this Mac no longer has it.",
+             {here} from {place}, because {here} no longer has it.",
             theme::ACTION,
-            crate::ui::quoted(&folder)
+            crate::ui::quoted(&folder),
+            here = crate::platform::words().this_computer
         );
         lines.push((format!("  {note}"), Tone::Plain));
         notes.push(note);
@@ -1414,11 +1425,12 @@ async fn edit(
             // now being on the startup disk means the drive looks unplugged.
             Ok(None) if dest.identity().is_some() && !edits.forget_drive.contains(id) => {
                 return Ok(Err(Failure::invalid(format!(
-                    "destination {id}: {} is now a folder on the startup disk, so the drive \
+                    "destination {id}: {} is now a folder on {}, so the drive \
                      looks unplugged and its record was kept. Plug the drive in and run this \
                      again. If the folder really is no longer on a drive, drop the record with: \
                      onefolder jobs edit {name} --forget-drive {id}",
-                    path.display()
+                    path.display(),
+                    crate::platform::words().system_disk
                 ))));
             }
             Ok(identity) => {

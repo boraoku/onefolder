@@ -22,6 +22,7 @@ const JOB_KEYS: &[&str] = &[
     "source_mount_point",
     "source_volume_partition_uuid",
     "source_volume_device",
+    "source_volume_root",
 ];
 const DESTINATION_KEYS: &[&str] = &[
     "id",
@@ -34,6 +35,7 @@ const DESTINATION_KEYS: &[&str] = &[
     "mount_point",
     "volume_partition_uuid",
     "volume_device",
+    "volume_root",
 ];
 
 /// Keys with a default: when the model holds the default, the key is only

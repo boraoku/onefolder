@@ -1,0 +1,2 @@
+124 181 7:0 / /media/bora/Backup rw,relatime shared:215 - ext4 /dev/loop0 rw
+126 181 0:67 / /media/bora rw,relatime shared:217 - tmpfs tmpfs rw

@@ -9,12 +9,42 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::TempDir;
 
-const BREW_MESSAGE: &str = "\
+/// The binary's words on this platform, as `crate::platform` picks them:
+/// macOS names the Mac and Homebrew; Linux names "this computer" and
+/// rclone's own installer (these tests keep `brew` off PATH).
+const MAC: bool = cfg!(target_os = "macos");
+const THIS_COMPUTER: &str = if MAC { "this Mac" } else { "this computer" };
+const SYSTEM_DISK: &str = if MAC {
+    "the startup disk"
+} else {
+    "the system disk"
+};
+const INSTALL: &str = if MAC {
+    "install it with: brew install rclone"
+} else {
+    "install it from https://rclone.org/install/ (or brew install rclone with Homebrew)"
+};
+const UPDATE: &str = if MAC {
+    "update it with: brew upgrade rclone"
+} else {
+    "update it from https://rclone.org/install/"
+};
+
+const BREW_MESSAGE: &str = if MAC {
+    "\
 OneFolder needs rclone 1.66 or newer, and it is not on your PATH.
 
   Install it with Homebrew:   brew install rclone
   Then run onefolder again.
-";
+"
+} else {
+    "\
+OneFolder needs rclone 1.66 or newer, and it is not on your PATH.
+
+  Install it from https://rclone.org/install/ (or brew install rclone with Homebrew)
+  Then run onefolder again.
+"
+};
 
 /// The binary, isolated from the user's files.
 fn onefolder(home: &TempDir) -> Command {
@@ -120,9 +150,9 @@ fn version_json_with_an_old_rclone() {
         .assert()
         .success()
         .stdout(predicate::str::contains("rclone 1.60.0 at "))
-        .stdout(predicate::str::contains(
-            "older than 1.66 · update it with: brew upgrade rclone",
-        ));
+        .stdout(predicate::str::contains(format!(
+            "older than 1.66 · {UPDATE}"
+        )));
 }
 
 #[test]
@@ -212,9 +242,9 @@ fn doctor_without_rclone_reports_instead_of_exiting() {
         .assert()
         .code(1)
         .stdout(predicate::str::contains("➤ rclone"))
-        .stdout(predicate::str::contains(
-            "✗ not found on PATH · install it with: brew install rclone",
-        ))
+        .stdout(predicate::str::contains(format!(
+            "✗ not found on PATH · {INSTALL}"
+        )))
         .stdout(predicate::str::contains("1 problem · 0 warnings"));
 }
 
@@ -263,7 +293,11 @@ fn every_gated_command_needs_rclone() {
             .args(&args)
             .assert()
             .code(2)
-            .stderr(predicate::str::contains("brew install rclone"));
+            .stderr(predicate::str::contains(if MAC {
+                "brew install rclone"
+            } else {
+                "https://rclone.org/install/"
+            }));
     }
 }
 
@@ -303,7 +337,11 @@ fn old_rclone_is_refused() {
         .stderr(predicate::str::contains(
             "OneFolder needs rclone 1.66 or newer, and the one on your PATH is 1.65.1.",
         ))
-        .stderr(predicate::str::contains("brew upgrade rclone"));
+        .stderr(predicate::str::contains(if MAC {
+            "brew upgrade rclone"
+        } else {
+            "Update it from https://rclone.org/install/"
+        }));
 }
 
 /// `doctor --prune-logs` lists with `--dry-run`, then removes: old logs
@@ -508,7 +546,9 @@ fn release_lifts_a_hold() {
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("✓ Released \"Old projects/2019\""), "{text}");
     assert!(
-        text.contains("copies \"Old projects/2019\" back to this Mac"),
+        text.contains(&format!(
+            "copies \"Old projects/2019\" back to {THIS_COMPUTER}"
+        )),
         "{text}"
     );
     let saved: serde_json::Value =
@@ -801,9 +841,8 @@ fn jobs_add_with_flags_creates_both_destination_types() {
         "{stdout}"
     );
     // A temp folder is on the startup disk, which is never recorded.
-    #[cfg(target_os = "macos")]
     assert!(
-        stdout.contains(": on the startup disk, so there is no drive to record."),
+        stdout.contains(&format!("{SYSTEM_DISK}, so there is no drive to record.")),
         "{stdout}"
     );
 
@@ -1378,12 +1417,11 @@ fn jobs_rerecord_and_the_drive_root() {
         .stdout(predicate::str::contains("→ work: (drive root)"));
 
     // Re-recording a folder on the startup disk records nothing and keeps the id.
-    #[cfg(target_os = "macos")]
     h.cmd()
         .args(["jobs", "edit", "root", "--rerecord", &local])
         .assert()
         .success()
-        .stdout(predicate::str::contains("on the startup disk"));
+        .stdout(predicate::str::contains(SYSTEM_DISK));
     assert_eq!(
         h.list_json()["data"][0]["destinations"][1]["id"],
         local.as_str()
@@ -1481,18 +1519,21 @@ fn jobs_are_not_changed_while_they_run() {
     let path = fake_rclone_path("rclone v1.75.2");
     let mount = std::fs::canonicalize(home.path()).unwrap().join("Backup");
     config_with_recorded_drive(&home, &mount);
-    // A stand-in for a running OneFolder: `sleep`, under that name (the
-    // copy is signed again, or macOS kills it for its broken signature).
+    // A stand-in for a running OneFolder: `sleep`, under that name (on
+    // macOS the copy is signed again, or macOS kills it for its broken
+    // signature).
     let bin = home.path().join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     std::fs::copy("/bin/sleep", bin.join("onefolder")).unwrap();
-    let signed = std::process::Command::new("/usr/bin/codesign")
-        .args(["-s", "-", "-f"])
-        .arg(bin.join("onefolder"))
-        .stderr(std::process::Stdio::null())
-        .status()
-        .unwrap();
-    assert!(signed.success());
+    if MAC {
+        let signed = std::process::Command::new("/usr/bin/codesign")
+            .args(["-s", "-", "-f"])
+            .arg(bin.join("onefolder"))
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(signed.success());
+    }
     let mut child = std::process::Command::new(bin.join("onefolder"))
         .arg("30")
         .spawn()

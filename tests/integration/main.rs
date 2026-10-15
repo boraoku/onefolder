@@ -29,6 +29,19 @@ use assert_cmd::Command;
 use serde_json::Value;
 use tempfile::TempDir;
 
+/// The arguments of script(1) that run `shell` (a `/bin/sh` command line)
+/// under a pseudo-terminal, writing no typescript: BSD's syntax on macOS,
+/// util-linux's on Linux (`-c` runs the command through `$SHELL`, and `-e`
+/// passes its exit status on).
+fn script_args(shell: &str) -> Vec<String> {
+    let args: &[&str] = if cfg!(target_os = "macos") {
+        &["-q", "/dev/null", "/bin/sh", "-c", shell]
+    } else {
+        &["-q", "-e", "-c", shell, "/dev/null"]
+    };
+    args.iter().map(|a| a.to_string()).collect()
+}
+
 fn enabled() -> bool {
     let on = std::env::var("ONEFOLDER_INTEGRATION").is_ok_and(|v| v == "1");
     if !on {
@@ -1434,7 +1447,12 @@ fn folder_prompt_answers() {
             .output()
             .unwrap();
         assert_eq!(out.status.code(), Some(0));
-        assert!(String::from_utf8_lossy(&out.stdout).contains("back to this Mac"));
+        let this_computer = if cfg!(target_os = "macos") {
+            "this Mac"
+        } else {
+            "this computer"
+        };
+        assert!(String::from_utf8_lossy(&out.stdout).contains(&format!("back to {this_computer}")));
         assert!(w.state()["holds"].get(format!("documents/{id}")).is_none());
         w.sync_ok(id, &[]);
         assert_eq!(
@@ -1488,7 +1506,8 @@ fn deleting_more_than_half_needs_confirmation() {
     // Killed when the test fails, so no run is left behind.
     let mut child = KillOnDrop(
         cmd.env("TERM", "xterm-256color")
-            .args(["-q", "/dev/null", "/bin/sh", "-c", &shell])
+            .args(script_args(&shell))
+            .env("SHELL", "/bin/sh")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -2334,11 +2353,239 @@ impl Drop for Images {
 }
 
 fn disk_tests_enabled() -> bool {
+    if !cfg!(target_os = "macos") {
+        eprintln!("skipped: the disk image tests need macOS (hdiutil)");
+        return false;
+    }
     let on = std::env::var("ONEFOLDER_DISK_TESTS").is_ok_and(|v| v == "1");
     if !on {
         eprintln!("skipped: set ONEFOLDER_DISK_TESTS=1 to attach real disk images");
     }
     on
+}
+
+/// A real drive the tester mounted, named by `ONEFOLDER_DRIVE` (on Linux,
+/// `scripts/demo-linux-drive.sh` shows how to make one: an ext4 image
+/// mounted with sudo under `/media/$USER`). Skipped when it is not set.
+fn real_drive() -> Option<PathBuf> {
+    let drive = std::env::var_os("ONEFOLDER_DRIVE").filter(|v| !v.is_empty());
+    if drive.is_none() {
+        eprintln!("skipped: set ONEFOLDER_DRIVE=/path/to/a/mounted/drive");
+    }
+    drive.map(PathBuf::from)
+}
+
+/// The file system UUID of the drive mounted at `mount_point`, as
+/// util-linux reports it.
+#[cfg(target_os = "linux")]
+fn drive_uuid(mount_point: &Path) -> String {
+    let out = StdCommand::new("findmnt")
+        .args(["-n", "-o", "UUID", "--mountpoint"])
+        .arg(mount_point)
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// A destination on a real mounted drive (`ONEFOLDER_DRIVE`) is recorded
+/// with the drive's UUID and checked before each run: the run goes ahead,
+/// and `status --json` and `doctor --json` report the drive mounted where
+/// it was recorded. Nothing is unmounted. A folder under the drives'
+/// folder that is not on a drive is refused at setup as being on the
+/// system disk.
+#[test]
+fn a_real_drive_is_recorded_and_checked() {
+    if !enabled() {
+        return;
+    }
+    let Some(drive) = real_drive() else { return };
+    let drive = fs::canonicalize(&drive).expect("ONEFOLDER_DRIVE exists");
+    let w = World::new();
+    w.config("");
+    w.write("src/a.txt", "a");
+    let folder = drive.join(format!("OneFolderTest-{}", std::process::id()));
+    // Removed whatever happens, so the drive is left as it was.
+    struct Remove(PathBuf);
+    impl Drop for Remove {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let _remove = Remove(folder.clone());
+    let out = w
+        .onefolder()
+        .args(["jobs", "add", "drive", "--source"])
+        .arg(w.path("src"))
+        .arg("--local")
+        .arg(&folder)
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&out.stdout).to_string();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{said}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(said.contains(": recorded volume"), "{said}");
+
+    // The drive's identity, as recorded.
+    let out = w
+        .onefolder()
+        .args(["jobs", "list", "--json"])
+        .output()
+        .unwrap();
+    let list: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let job = list["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|j| j["name"] == "drive")
+        .unwrap_or_else(|| panic!("no job drive: {list}"));
+    let volume = &job["destinations"][0]["volume"];
+    let mount_point = volume["mount_point"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no drive recorded: {list}"))
+        .to_string();
+    assert!(drive.starts_with(&mount_point), "{volume}");
+    let uuid = volume["volume_uuid"]
+        .as_str()
+        .or(volume["partition_uuid"].as_str())
+        .unwrap_or_else(|| panic!("no UUID recorded: {volume}"))
+        .to_string();
+    #[cfg(target_os = "linux")]
+    assert_eq!(uuid, drive_uuid(Path::new(&mount_point)), "{volume}");
+    assert!(!uuid.is_empty());
+
+    let out = w
+        .onefolder()
+        .args(["run", "drive", "--yes", "--json"])
+        .output()
+        .unwrap();
+    let lines = ndjson(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{lines:#?}");
+    assert_eq!(fs::read_to_string(folder.join("a.txt")).unwrap(), "a");
+
+    let out = w.onefolder().args(["status", "--json"]).output().unwrap();
+    let status: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let of_drive = |jobs: &Value| -> Value {
+        jobs.as_array()
+            .unwrap()
+            .iter()
+            .find(|j| j["name"] == "drive")
+            .unwrap_or_else(|| panic!("no job drive: {jobs}"))["destinations"][0]
+            .clone()
+    };
+    let v = &of_drive(&status["data"]["jobs"])["volume"];
+    assert_eq!(v["state"], "mounted", "{v}");
+    assert_eq!(v["mount_point"], mount_point.as_str(), "{v}");
+    let out = w.onefolder().args(["doctor", "--json"]).output().unwrap();
+    let doctor: Value = serde_json::from_slice(&out.stdout).unwrap();
+    let d = &of_drive(&doctor["data"]["jobs"]);
+    assert_eq!(d["volume"], "mounted", "{d}");
+    assert!(
+        d["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("mounted · volume"),
+        "{d}"
+    );
+
+    // A folder where drives are mounted, but on the system disk.
+    let (root, words) = if cfg!(target_os = "macos") {
+        ("/Volumes".to_string(), "on the startup disk")
+    } else {
+        let user = std::env::var("USER").unwrap_or_else(|_| "nobody".into());
+        (format!("/media/{user}"), "on the system disk")
+    };
+    let nowhere = format!("{root}/OneFolderNoSuchDrive/Documents");
+    let out = w
+        .onefolder()
+        .args(["jobs", "add", "nowhere", "--source"])
+        .arg(w.path("src"))
+        .arg("--local")
+        .arg(&nowhere)
+        .output()
+        .unwrap();
+    let text =
+        String::from_utf8_lossy(&out.stderr).to_string() + &String::from_utf8_lossy(&out.stdout);
+    assert_ne!(out.status.code(), Some(0), "{text}");
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(flat.contains(words), "{flat}");
+}
+
+/// A case-only rename onto a mounted drive that ignores case
+/// (`ONEFOLDER_CASELESS_DRIVE`: a FAT or exFAT drive, or a CIFS share) is
+/// never a move, even from a source that tells case apart: moving
+/// `Report.pdf` to `report.pdf` there would be a move of a file onto
+/// itself, which rclone answers by deleting it. The file stays, with its
+/// content, and nothing moves. Skipped when the variable is not set.
+#[test]
+fn a_case_only_rename_onto_a_drive_that_ignores_case_is_not_a_move() {
+    if !enabled() {
+        return;
+    }
+    let Some(drive) = std::env::var_os("ONEFOLDER_CASELESS_DRIVE").filter(|v| !v.is_empty()) else {
+        eprintln!("skipped: set ONEFOLDER_CASELESS_DRIVE=/path/to/a/mounted/fat/or/cifs/drive");
+        return;
+    };
+    let drive = fs::canonicalize(PathBuf::from(drive)).expect("the drive exists");
+    let w = World::new();
+    w.config("");
+    w.write("src/Report.pdf", "the quarterly report");
+    w.write("src/Photos/a.jpg", "photo a");
+    let folder = drive.join(format!("OneFolderCase-{}", std::process::id()));
+    struct Remove(PathBuf);
+    impl Drop for Remove {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    let _remove = Remove(folder.clone());
+    let out = w
+        .onefolder()
+        .args(["jobs", "add", "caseless", "--source"])
+        .arg(w.path("src"))
+        .arg("--local")
+        .arg(&folder)
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let run = || {
+        let out = w
+            .onefolder()
+            .args(["run", "caseless", "--yes", "--json", "--moves", "move"])
+            .output()
+            .unwrap();
+        (out.status.code(), ndjson(&out.stdout))
+    };
+    let (code, lines) = run();
+    assert_eq!(code, Some(0), "{lines:#?}");
+    fs::rename(w.path("src/Report.pdf"), w.path("src/report.pdf")).unwrap();
+    fs::rename(w.path("src/Photos"), w.path("src/photos")).unwrap();
+    let (code, lines) = run();
+    assert_eq!(code, Some(0), "{lines:#?}");
+    let preview = lines
+        .iter()
+        .find(|l| l["event"] == "preview")
+        .unwrap_or_else(|| panic!("no preview: {lines:#?}"));
+    assert_eq!(preview["moves"]["count"], 0, "{preview}");
+    assert!(lines.iter().all(|l| l["event"] != "moves"), "{lines:#?}");
+    // Whatever spelling the drive kept, the report is there with its content.
+    let files = contents(&folder);
+    let reports: Vec<&String> = files
+        .keys()
+        .filter(|k| k.eq_ignore_ascii_case("report.pdf"))
+        .collect();
+    assert_eq!(reports.len(), 1, "{files:?}");
+    assert_eq!(files[reports[0]], "the quarterly report");
+    assert_eq!(files.len(), 2, "{files:?}");
 }
 
 /// Real external volumes (APFS disk images): an unplugged drive, a mount
@@ -2526,7 +2773,14 @@ fn a_symlink_into_volumes_needs_a_recorded_drive() {
     }
     let w = World::new();
     let link = w.path("dst-link");
-    std::os::unix::fs::symlink("/Volumes/OneFolderNoSuchDrive/Documents", &link).unwrap();
+    // Where drives are mounted on this system (on Linux not /Volumes, which
+    // some virtual machines share in from their Mac).
+    let target = if cfg!(target_os = "macos") {
+        "/Volumes/OneFolderNoSuchDrive/Documents"
+    } else {
+        "/media/OneFolderNoSuchDrive/Documents"
+    };
+    std::os::unix::fs::symlink(target, &link).unwrap();
     w.config(
         &(w.local_destination(LOCAL, &link)
             + &w.alias_destination(ALIAS, "Backups/Documents", "one-way")),
@@ -2543,7 +2797,7 @@ fn a_symlink_into_volumes_needs_a_recorded_drive() {
         "{problem}"
     );
     assert!(
-        problem.contains("leads to /Volumes/OneFolderNoSuchDrive/Documents on a drive"),
+        problem.contains(&format!("leads to {target} on a drive")),
         "{problem}"
     );
     assert!(problem.contains("--rerecord d-0001"), "{problem}");
@@ -3335,9 +3589,28 @@ fn moved_and_changed_is_uploaded() {
     }
 }
 
-/// A rename that only changes case is the same file on every destination
-/// (they all ignore case): nothing is new, nothing is left alone, nothing
-/// moves. An identical copy elsewhere is not a move of the old spelling.
+/// True when the file system holding `dir` tells names apart by case
+/// alone (ext4, tmpfs, btrfs on Linux), as OneFolder's move detection
+/// then does for a local folder there.
+fn counts_case(dir: &Path) -> bool {
+    let probe = dir.join("case-probe");
+    fs::write(&probe, "x").unwrap();
+    let counts = !dir.join("CASE-PROBE").exists();
+    fs::remove_file(&probe).unwrap();
+    counts
+}
+
+/// A rename that only changes case is the same file on a destination
+/// that ignores case (OneDrive, every folder on a Mac): nothing is new,
+/// nothing is left alone, nothing moves. An identical copy elsewhere is
+/// not a move of the old spelling.
+///
+/// Where the local destination and the source tell case apart (two ext4
+/// folders on Linux), the case-only renames are moves: the file and the
+/// folder are renamed on the destination, which then holds the new
+/// spellings only. The alias standing in for OneDrive is still compared
+/// ignoring case, as OneDrive is, but rclone's local backend under it
+/// counts case on Linux, so there the new spellings arrive beside the old.
 #[test]
 fn case_only_renames_are_not_moves() {
     if !enabled() {
@@ -3351,10 +3624,21 @@ fn case_only_renames_are_not_moves() {
     seed_both(&w);
     fs::rename(w.path("src/Report.pdf"), w.path("src/report.pdf")).unwrap();
     fs::rename(w.path("src/Photos"), w.path("src/photos")).unwrap();
+    // The source and both destinations share one temp file system.
+    let case_counts = !cfg!(target_os = "macos") && counts_case(&w.path(""));
     let (code, lines) = w.run_json(&["--yes", "--moves", "move"]);
     assert_eq!(code, Some(0), "{lines:#?}");
-    for (id, _) in both_dirs(&w) {
+    for (id, dir) in both_dirs(&w) {
         let p = events(&lines, "preview", id)[0];
+        if id == LOCAL && case_counts {
+            assert_eq!(p["moves"]["count"], 3, "{p}");
+            assert_eq!(p["destination_only"], 3, "{p}");
+            assert_eq!(moved_of(&lines, id)["files"], 3, "{lines:#?}");
+            assert_eq!(summary_of(&lines, id)["destination_only"], 0);
+            let files: Vec<String> = contents(&dir).into_keys().collect();
+            assert_eq!(files, ["photos/a.jpg", "photos/b.jpg", "report.pdf"]);
+            continue;
+        }
         assert_eq!(p["moves"]["count"], 0, "{p}");
         assert_eq!(p["destination_only"], 0, "{p}");
         assert_eq!(summary_of(&lines, id)["destination_only"], 0);
@@ -3385,7 +3669,11 @@ fn case_only_renames_are_not_moves() {
         let files = contents(&dir);
         assert_eq!(files["Backup/report.pdf"], "the quarterly report");
         let top: Vec<&String> = files.keys().filter(|k| !k.contains('/')).collect();
-        assert_eq!(top.len(), 1, "the report is still at the top: {files:?}");
+        if id == ALIAS && case_counts {
+            assert_eq!(top, ["Report.pdf", "report.pdf"], "{files:?}");
+        } else {
+            assert_eq!(top.len(), 1, "the report is still at the top: {files:?}");
+        }
     }
 }
 
@@ -3768,7 +4056,8 @@ fn the_menu_session_stays_on_the_alternate_screen() {
     );
     let mut child = KillOnDrop(
         cmd.env("TERM", "xterm-256color")
-            .args(["-q", "/dev/null", "/bin/sh", "-c", &shell])
+            .args(script_args(&shell))
+            .env("SHELL", "/bin/sh")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -3879,7 +4168,8 @@ fn sigterm_at_the_menu_restores_the_terminal() {
     );
     let mut child = KillOnDrop(
         cmd.env("TERM", "xterm-256color")
-            .args(["-q", "/dev/null", "/bin/sh", "-c", &shell])
+            .args(script_args(&shell))
+            .env("SHELL", "/bin/sh")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -4055,7 +4345,8 @@ impl Pty {
         );
         let mut child = KillOnDrop(
             cmd.env("TERM", "xterm-256color")
-                .args(["-q", "/dev/null", "/bin/sh", "-c", &shell])
+                .args(script_args(&shell))
+                .env("SHELL", "/bin/sh")
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())

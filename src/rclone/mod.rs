@@ -242,6 +242,24 @@ pub fn moveto_args(from: &str, to: &str) -> Vec<String> {
     args
 }
 
+/// A recorded rclone fixture: from `ONEFOLDER_RCLONE_FIXTURES` when it is
+/// set and holds the file (`just fixtures` records into a temporary folder
+/// and points the tests there, so the committed fixtures are never
+/// rewritten), else from `tests/fixtures/rclone/`, which also holds the
+/// hand-made ones the recorder does not write.
+#[cfg(test)]
+pub(crate) fn fixture_path(name: &str) -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("ONEFOLDER_RCLONE_FIXTURES").filter(|d| !d.is_empty()) {
+        let path = std::path::Path::new(&dir).join(name);
+        if !name.is_empty() && path.exists() {
+            return path;
+        }
+    }
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/rclone")
+        .join(name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

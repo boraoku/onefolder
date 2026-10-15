@@ -5,7 +5,7 @@
 //! run started. It is removed when the [`RunLock`] is dropped, and by the
 //! signal dispatcher when SIGINT, SIGTERM or SIGHUP end the process outright
 //! (see `rclone::exec::remove_on_exit`). A lock whose process is gone, is no
-//! longer OneFolder (the id was reused), or was taken before the Mac last
+//! longer OneFolder (the id was reused), or was taken before the computer last
 //! started is stale and is removed with a note.
 
 use std::fs::{self, OpenOptions};
@@ -68,7 +68,7 @@ pub struct Removed {
     pub pid: i32,
     pub path: PathBuf,
     /// The process id is alive, but it is another program now (the id was
-    /// reused) or it started before the Mac did: no longer a OneFolder run.
+    /// reused) or it started before the computer did: no longer a OneFolder run.
     pub pid_reused: bool,
 }
 
@@ -112,7 +112,7 @@ pub fn parse(text: &str) -> Option<LockInfo> {
 }
 
 /// Whether a lock still belongs to a running OneFolder. `alive` is whether
-/// the process exists, `command` its name and `boot` the Mac's start in
+/// the process exists, `command` its name and `boot` the computer's start in
 /// Unix seconds, each when known. A process id is reused after a restart,
 /// so a lock taken before the start, or one whose process is not
 /// OneFolder, is stale whatever `kill` says.
@@ -357,7 +357,7 @@ mod tests {
         );
         assert!(
             !is_live(&info, true, Some("onefolder"), Some(started + 60)),
-            "taken before the Mac started"
+            "taken before the computer started"
         );
     }
 

@@ -209,7 +209,7 @@ impl Flow<'_> {
         let id = self.dest.id();
         let place = place(self.info.kind);
         let side_name = |side: Option<Side>| match side {
-            Some(Side::Path1) => "this Mac".to_string(),
+            Some(Side::Path1) => crate::platform::words().this_computer.to_string(),
             _ => place.to_string(),
         };
         let resync = format!("onefolder run {job} --dest {id} --resync");
@@ -261,10 +261,12 @@ impl Flow<'_> {
                      with: {resync} (nothing is deleted by a merge)."
                 )
             }
-            Abort::NamesTooLong => "The folder paths are too long for bisync\n  rclone names its \
-                 listing files after both folder paths, and together they pass macOS's limit of \
-                 255 characters for a file name. Use a shorter source or destination folder."
-                .to_string(),
+            Abort::NamesTooLong => format!(
+                "The folder paths are too long for bisync\n  rclone names its \
+                 listing files after both folder paths, and together they pass {} limit of \
+                 255 characters for a file name. Use a shorter source or destination folder.",
+                crate::platform::words().file_systems
+            ),
         }
     }
 }
@@ -603,7 +605,7 @@ pub async fn run_destination(
         if !run.interactive {
             let big = &plan.big[0];
             let side = match big.side {
-                super::reporter::Where::Local => "this Mac",
+                super::reporter::Where::Local => crate::platform::words().this_computer,
                 super::reporter::Where::Destination => place(info.kind),
             };
             let what = match big.kind {
@@ -879,7 +881,8 @@ async fn remove_folder_leftovers(
     let quoted = format!("\"{folder}\"");
     if fs::symlink_metadata(Path::new(flow.source()).join(folder)).is_ok() {
         reporter.note(&format!(
-            "{quoted} is back on this Mac, so what is left of it on {place} stays."
+            "{quoted} is back on {}, so what is left of it on {place} stays.",
+            crate::platform::words().this_computer
         ));
         return false;
     }

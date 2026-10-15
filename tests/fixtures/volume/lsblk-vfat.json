@@ -1,0 +1,15 @@
+{
+   "blockdevices": [
+      {
+         "path": "/dev/loop2",
+         "uuid": "3C49-0C2E",
+         "partuuid": null,
+         "label": "STICK",
+         "fstype": "vfat",
+         "ro": false,
+         "mountpoints": [
+             "/media/bora/STICK"
+         ]
+      }
+   ]
+}

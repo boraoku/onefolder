@@ -1,0 +1,15 @@
+{
+   "blockdevices": [
+      {
+         "path": "/dev/loop0",
+         "uuid": "87c01f90-c751-4b21-858a-300fc947ee16",
+         "partuuid": null,
+         "label": "Backup",
+         "fstype": "ext4",
+         "ro": false,
+         "mountpoints": [
+             "/media/bora/Backup"
+         ]
+      }
+   ]
+}

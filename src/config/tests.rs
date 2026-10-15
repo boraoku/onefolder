@@ -620,6 +620,7 @@ fn both_destination_types_and_volume_fields_round_trip() {
         volume_uuid: Some("C0C0C0C0-0000-4E5F-8A9B-000000000003".into()),
         partition_uuid: None,
         device: None,
+        mount_root: None,
     };
     file.config.jobs[0].destinations[1].set_identity(Some(&strong));
     let (text, again) = reload(&mut file);

@@ -138,11 +138,54 @@ fn size_of(e: &Entry) -> Option<u64> {
     u64::try_from(e.size).ok().filter(|s| *s > 0)
 }
 
-/// A path as every destination OneFolder supports compares it: composed
-/// (NFC) and case-folded. macOS drives, OneDrive and rclone's matching on
-/// them ignore case, so `Report.pdf` and `report.pdf` are one file.
-pub fn fold(path: &str) -> String {
-    nfc(path).to_lowercase()
+/// How names are compared: ignoring case or not. OneDrive and macOS
+/// drives ignore case, so `Report.pdf` and `report.pdf` are one file; on
+/// Linux a local folder ignores case only on a FAT, exFAT or NTFS drive or
+/// a Windows drive under WSL (see [`crate::volume::ignores_case`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Case {
+    Insensitive,
+    Sensitive,
+}
+
+impl Case {
+    pub fn of(ignores_case: bool) -> Case {
+        if ignores_case {
+            Case::Insensitive
+        } else {
+            Case::Sensitive
+        }
+    }
+
+    /// The rule for comparing the source with the destination: ignoring
+    /// case when either side does. The destination's rule, because rclone
+    /// matches names that way (a case-only rename onto a destination that
+    /// ignores case is the same file, and moving a file onto itself would
+    /// lose it); the source's, because a name the source still answers to
+    /// is not gone from it.
+    pub fn between(source: Case, destination: Case) -> Case {
+        if source == Case::Insensitive || destination == Case::Insensitive {
+            Case::Insensitive
+        } else {
+            Case::Sensitive
+        }
+    }
+
+    /// A path as this rule compares it: composed (NFC), and case-folded
+    /// when case is ignored.
+    pub fn key(self, path: &str) -> String {
+        match self {
+            Case::Insensitive => nfc(path).to_lowercase(),
+            Case::Sensitive => nfc(path),
+        }
+    }
+}
+
+/// A path composed (NFC) and case-folded, as a destination that ignores
+/// case compares it: [`Case::Insensitive`]'s key.
+#[cfg(test)]
+fn fold(path: &str) -> String {
+    Case::Insensitive.key(path)
 }
 
 /// A time from `lsjson` (RFC 3339) in nanoseconds, `None` when unreadable.
@@ -167,16 +210,16 @@ fn same_time(a: &str, b: &str) -> bool {
 }
 
 /// One file of a bucket, with what the tie-break needs worked out once:
-/// its folded path components and its time.
+/// its path components as compared (see [`Case::key`]) and its time.
 struct Side {
     comps: Vec<String>,
     time: Option<i128>,
 }
 
 impl Side {
-    fn new(path: &str, time: Option<i128>) -> Side {
+    fn new(path: &str, time: Option<i128>, case: Case) -> Side {
         Side {
-            comps: fold(path).split('/').map(str::to_string).collect(),
+            comps: case.key(path).split('/').map(str::to_string).collect(),
             time,
         }
     }
@@ -250,8 +293,9 @@ impl Index {
 
 /// Pairs new files with destination-only files of identical content.
 ///
-/// `source_times` maps a source path (folded, see [`fold`]) to its
-/// modification time from the source listing; `source_hashes` and
+/// `source_times` maps a source path (as `case` compares it, see
+/// [`Case::key`]) to its modification time from the source listing; paths
+/// are compared by `case` throughout; `source_hashes` and
 /// `dest_hashes` map paths to QuickXorHashes. A file without a hash on
 /// either side is never paired. Where one file matches several of
 /// identical content, the pair with the longest common path suffix wins,
@@ -259,6 +303,7 @@ impl Index {
 /// best for both files of the pair; a tie leaves the file to be uploaded.
 /// Each destination file is used at most once. Sorted by `to`.
 pub fn pair(
+    case: Case,
     new: &[PlannedFile],
     source_times: &HashMap<String, String>,
     dest_only: &[Entry],
@@ -301,15 +346,15 @@ pub fn pair(
             sources
                 .iter()
                 .map(|f| {
-                    let time = source_times.get(&fold(&f.path)).and_then(|t| nanos(t));
-                    Side::new(&f.path, time)
+                    let time = source_times.get(&case.key(&f.path)).and_then(|t| nanos(t));
+                    Side::new(&f.path, time, case)
                 })
                 .collect(),
         );
         let mut d_index = Index::new(
             dests
                 .iter()
-                .map(|e| Side::new(&e.path, nanos(&e.mod_time)))
+                .map(|e| Side::new(&e.path, nanos(&e.mod_time), case))
                 .collect(),
         );
         // Accept every pair that is the unique best for both of its files,
@@ -364,12 +409,18 @@ fn nested(a: &[String], b: &[String]) -> bool {
 /// overlap one another (no `A` or `B` inside another's `A` or `B`), so
 /// they can run side by side; single moves run after them.
 ///
+/// Paths are compared by `case` (see [`Case::key`]).
+///
 /// Gives the groups (folders first, each kind sorted by `to`) and every
 /// file's move, sorted by `to`, pointing at its group.
-pub fn group(pairs: &[Pair], dest_paths: &[String]) -> (Vec<MoveGroup>, Vec<PlannedMove>) {
-    let comps = |p: &str| -> Vec<String> { fold(p).split('/').map(str::to_string).collect() };
-    // Files listed under each folder of the destination, by folded
-    // components (see [`fold`]).
+pub fn group(
+    case: Case,
+    pairs: &[Pair],
+    dest_paths: &[String],
+) -> (Vec<MoveGroup>, Vec<PlannedMove>) {
+    let comps = |p: &str| -> Vec<String> { case.key(p).split('/').map(str::to_string).collect() };
+    // Files listed under each folder of the destination, by compared
+    // components (see [`Case::key`]).
     let mut under: HashMap<Vec<String>, u64> = HashMap::new();
     for p in dest_paths {
         let c = comps(p);
@@ -580,6 +631,7 @@ mod tests {
         let new = vec![new("Archive/report.pdf", 100), new("fresh.txt", 100)];
         let dest = vec![entry("Old/report.pdf", 100, T)];
         let p = pair(
+            Case::Insensitive,
             &new,
             &times(&["Archive/report.pdf", "fresh.txt"]),
             &dest,
@@ -596,6 +648,7 @@ mod tests {
         let new = vec![new("New/a.txt", 10)];
         let dest = vec![entry("Old/a.txt", 10, T)];
         let p = pair(
+            Case::Insensitive,
             &new,
             &times(&["New/a.txt"]),
             &dest,
@@ -618,6 +671,7 @@ mod tests {
             entry("dest-nohash", 6, T),
         ];
         let p = pair(
+            Case::Insensitive,
             &new,
             &times(&["x/empty", "x/nohash", "x/dest-nohash"]),
             &dest,
@@ -635,6 +689,7 @@ mod tests {
         let dest = vec![entry("a.txt", 7, T)];
         let h = map(&[("x/a.txt", "77"), ("y/a.txt", "77")]);
         let p = pair(
+            Case::Insensitive,
             &new,
             &times(&["x/a.txt", "y/a.txt"]),
             &dest,
@@ -644,6 +699,7 @@ mod tests {
         assert!(p.is_empty(), "{p:?}");
         // Two old copies, one new file, the same everything: no guess.
         let p = pair(
+            Case::Insensitive,
             &new[..1],
             &times(&["x/a.txt"]),
             &[entry("p/a.txt", 7, T), entry("q/a.txt", 7, T)],
@@ -660,7 +716,14 @@ mod tests {
         // Names settle it: a goes to a, b to b.
         let new = vec![new("x/a.txt", 7), new("y/b.txt", 7)];
         let dest = vec![entry("old/a.txt", 7, T), entry("old/b.txt", 7, T)];
-        let p = pair(&new, &times(&["x/a.txt", "y/b.txt"]), &dest, &h, &dest_h);
+        let p = pair(
+            Case::Insensitive,
+            &new,
+            &times(&["x/a.txt", "y/b.txt"]),
+            &dest,
+            &h,
+            &dest_h,
+        );
         assert_eq!(
             pairs_of(&p),
             [("old/a.txt", "x/a.txt"), ("old/b.txt", "y/b.txt")]
@@ -673,7 +736,7 @@ mod tests {
         ];
         let mut t = times(&["x/a.txt"]);
         t.insert("y/b.txt".into(), "2019-01-01T00:00:00Z".into());
-        let p = pair(&new, &t, &dest, &h, &dest_h);
+        let p = pair(Case::Insensitive, &new, &t, &dest, &h, &dest_h);
         assert_eq!(
             pairs_of(&p),
             [("old/a.txt", "x/a.txt"), ("old/b.txt", "y/b.txt")]
@@ -683,7 +746,7 @@ mod tests {
         let h2 = map(&[("x/c.txt", "77"), ("y/d.txt", "77")]);
         let mut t = times(&["x/c.txt"]);
         t.insert("y/d.txt".into(), "2019-01-01T00:00:00Z".into());
-        let p = pair(&renamed, &t, &dest, &h2, &dest_h);
+        let p = pair(Case::Insensitive, &renamed, &t, &dest, &h2, &dest_h);
         assert_eq!(
             pairs_of(&p),
             [("old/b.txt", "x/c.txt"), ("old/a.txt", "y/d.txt")]
@@ -703,6 +766,7 @@ mod tests {
         let h = map(&[("n/a.txt", "3"), ("n/b.txt", "3"), ("n/c.txt", "3")]);
         let dh = map(&[("o/a.txt", "3"), ("o/b.txt", "3")]);
         let p = pair(
+            Case::Insensitive,
             &new,
             &times(&["n/a.txt", "n/b.txt", "n/c.txt"]),
             &dest,
@@ -732,11 +796,11 @@ mod tests {
             dh.insert(from, "11".to_string());
         }
         let paths: Vec<&str> = new.iter().map(|f| f.path.as_str()).collect();
-        let p = pair(&new, &times(&paths), &dest, &h, &dh);
+        let p = pair(Case::Insensitive, &new, &times(&paths), &dest, &h, &dh);
         assert_eq!(p.len(), 5, "{p:?}");
         assert!(p.iter().all(|x| x.from[5..] == x.to[5..]), "{p:?}");
         let dest_paths: Vec<String> = dest.iter().map(|e| e.path.clone()).collect();
-        let (groups, _) = group(&p, &dest_paths);
+        let (groups, _) = group(Case::Insensitive, &p, &dest_paths);
         assert_eq!(groups.len(), 1, "{groups:?}");
         assert!(groups[0].folder);
     }
@@ -760,9 +824,9 @@ mod tests {
                 t.insert(fold(&to), T.to_string());
             }
             let started = std::time::Instant::now();
-            let p = pair(&new, &t, &dest, &h, &dh);
+            let p = pair(Case::Insensitive, &new, &t, &dest, &h, &dh);
             let dest_paths: Vec<String> = dest.iter().map(|e| e.path.clone()).collect();
-            let (groups, moves) = group(&p, &dest_paths);
+            let (groups, moves) = group(Case::Insensitive, &p, &dest_paths);
             let took = started.elapsed();
             assert_eq!(moves.len(), 3000, "{shape}");
             assert_eq!(groups.len(), 1, "{shape}");
@@ -778,12 +842,70 @@ mod tests {
             p("Old/a.txt", "New/a.txt", 1),
             p("Old/B.txt", "New/B.txt", 1),
         ];
-        let (groups, _) = group(&pairs, &owned(&["old/a.txt", "OLD/b.txt"]));
+        let (groups, _) = group(
+            Case::Insensitive,
+            &pairs,
+            &owned(&["old/a.txt", "OLD/b.txt"]),
+        );
         assert_eq!(groups.len(), 1, "{groups:?}");
         // Something under new/ in another case blocks the folder move.
-        let (groups, _) = group(&pairs, &owned(&["Old/a.txt", "Old/B.txt", "new/other.txt"]));
+        let (groups, _) = group(
+            Case::Insensitive,
+            &pairs,
+            &owned(&["Old/a.txt", "Old/B.txt", "new/other.txt"]),
+        );
         assert!(groups.iter().all(|g| !g.folder), "{groups:?}");
         assert_eq!(fold("Re\u{301}sume\u{301}/X.PDF"), "r\u{e9}sum\u{e9}/x.pdf");
+    }
+
+    /// Where neither side ignores case (two ext4 folders on Linux), a
+    /// case-only rename is a move, and a folder renamed only in case is
+    /// one folder move.
+    #[test]
+    fn case_only_renames_move_where_case_counts() {
+        let sensitive = Case::between(Case::Sensitive, Case::Sensitive);
+        assert_eq!(sensitive, Case::Sensitive);
+        assert_eq!(
+            Case::between(Case::Sensitive, Case::Insensitive),
+            Case::Insensitive,
+            "a destination that ignores case decides"
+        );
+        assert_eq!(
+            Case::between(Case::Insensitive, Case::Sensitive),
+            Case::Insensitive,
+            "so does a source that ignores case"
+        );
+        assert_eq!(
+            sensitive.key("Re\u{301}sume\u{301}.PDF"),
+            "R\u{e9}sum\u{e9}.PDF"
+        );
+        let new = vec![new("report.pdf", 7)];
+        let dest = vec![entry("Report.pdf", 7, T)];
+        let t: HashMap<String, String> = [("report.pdf".to_string(), T.to_string())].into();
+        let found = pair(
+            sensitive,
+            &new,
+            &t,
+            &dest,
+            &map(&[("report.pdf", "aa")]),
+            &map(&[("Report.pdf", "aa")]),
+        );
+        assert_eq!(pairs_of(&found), [("Report.pdf", "report.pdf")]);
+        let pairs = vec![
+            p("Photos/a.jpg", "photos/a.jpg", 1),
+            p("Photos/b.jpg", "photos/b.jpg", 2),
+        ];
+        let listed = owned(&["Photos/a.jpg", "Photos/b.jpg"]);
+        let (groups, _) = group(sensitive, &pairs, &listed);
+        assert_eq!(groups.len(), 1, "{groups:?}");
+        assert!(groups[0].folder);
+        assert_eq!(
+            (groups[0].from.as_str(), groups[0].to.as_str()),
+            ("Photos", "photos")
+        );
+        // Ignoring case, the same folder is never moved onto itself.
+        let (groups, _) = group(Case::Insensitive, &pairs, &listed);
+        assert!(groups.iter().all(|g| !g.folder), "{groups:?}");
     }
 
     #[test]
@@ -793,6 +915,7 @@ mod tests {
         let new = vec![new(&format!("New/{nfd}"), 5)];
         let dest = vec![entry(&format!("Old/{nfc_name}"), 5, T)];
         let p = pair(
+            Case::Insensitive,
             &new,
             &times(&[&format!("New/{nfd}")]),
             &dest,
@@ -814,6 +937,7 @@ mod tests {
             size: 1,
         };
         let (groups, _) = group(
+            Case::Insensitive,
             &[p1, p2],
             &["Old/y.txt".into(), format!("Old/x/{nfc_name}")],
         );
@@ -852,7 +976,7 @@ mod tests {
             "loose.txt",
             "same.txt",
         ]);
-        let (groups, moves) = group(&pairs, &dest);
+        let (groups, moves) = group(Case::Insensitive, &pairs, &dest);
         assert_eq!(
             groups,
             [
@@ -889,7 +1013,7 @@ mod tests {
             .into_iter()
             .filter(|d| d != "Projects/keep.txt")
             .collect();
-        let (groups, _) = group(&pairs, &dest);
+        let (groups, _) = group(Case::Insensitive, &pairs, &dest);
         assert_eq!(
             (groups[0].from.as_str(), groups[0].to.as_str()),
             ("Projects", "Archive")
@@ -902,17 +1026,26 @@ mod tests {
             p("Old/a.txt", "New/a.txt", 1),
             p("Old/b.txt", "New/b.txt", 1),
         ];
-        let (groups, moves) = group(&pairs, &owned(&["Old/a.txt", "Old/b.txt", "Old/extra.txt"]));
+        let (groups, moves) = group(
+            Case::Insensitive,
+            &pairs,
+            &owned(&["Old/a.txt", "Old/b.txt", "Old/extra.txt"]),
+        );
         assert_eq!(groups.len(), 2);
         assert!(groups.iter().all(|g| !g.folder && g.files == 1));
         assert_eq!(moves[1].group, 1);
         // Nor when something is already listed under the new folder.
-        let (groups, _) = group(&pairs, &owned(&["Old/a.txt", "Old/b.txt", "New/c.txt"]));
+        let (groups, _) = group(
+            Case::Insensitive,
+            &pairs,
+            &owned(&["Old/a.txt", "Old/b.txt", "New/c.txt"]),
+        );
         assert!(groups.iter().all(|g| !g.folder));
         // Nor for a folder of one file, nor a renamed file.
-        let (groups, _) = group(&pairs[..1], &owned(&["Old/a.txt"]));
+        let (groups, _) = group(Case::Insensitive, &pairs[..1], &owned(&["Old/a.txt"]));
         assert!(!groups[0].folder);
         let (groups, _) = group(
+            Case::Insensitive,
             &[
                 p("Old/a.txt", "New/z.txt", 1),
                 p("Old/b.txt", "New/b.txt", 1),
@@ -922,6 +1055,7 @@ mod tests {
         assert!(groups.iter().all(|g| !g.folder), "{groups:?}");
         // Nor into a folder of its own, or out to the top level.
         let (groups, _) = group(
+            Case::Insensitive,
             &[
                 p("A/a.txt", "A/sub/a.txt", 1),
                 p("A/b.txt", "A/sub/b.txt", 1),
@@ -930,6 +1064,7 @@ mod tests {
         );
         assert!(groups.iter().all(|g| !g.folder), "{groups:?}");
         let (groups, _) = group(
+            Case::Insensitive,
             &[p("A/a.txt", "a.txt", 1), p("A/b.txt", "b.txt", 1)],
             &owned(&["A/a.txt", "A/b.txt"]),
         );
@@ -947,6 +1082,7 @@ mod tests {
             p("Z/d.txt", "X/sub/d.txt", 1),
         ];
         let (groups, _) = group(
+            Case::Insensitive,
             &pairs,
             &owned(&["X/a.txt", "X/b.txt", "Z/c.txt", "Z/d.txt"]),
         );

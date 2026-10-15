@@ -1,0 +1,51 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set."
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType#\": #,\n\t\"HashType#\": #,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Synching Path# \"/fixture/bd/src/\" with Path# \"/fixture/bd/dst/\""
+  },
+  {
+    "event": "fatal",
+    "message": "Bisync critical error: cannot find prior Path1 or Path2 listings, likely due to critical error on prior run \nTip: here are the filenames we were looking for. Do they exist? \nPath1: /fixture/bd/wd/fixture_bd_src..fixture_bd_dst.path1.lst\nPath2: /fixture/bd/wd/fixture_bd_src..fixture_bd_dst.path2.lst\nTry running this command to inspect the work dir: \nrclone lsl \"/fixture/bd/wd\""
+  },
+  {
+    "event": "fatal",
+    "message": "Bisync aborted. Error is retryable without --resync due to --resilient mode."
+  },
+  {
+    "event": "fatal",
+    "message": "Failed to bisync: bisync aborted"
+  },
+  {
+    "event": "stats",
+    "bytes": 0,
+    "totalBytes": 0,
+    "transfers": 0,
+    "totalTransfers": 0,
+    "checks": 0,
+    "totalChecks": 0,
+    "listed": "[listed]",
+    "errors": 1,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": true,
+    "lastError": "bisync aborted",
+    "transferring": []
+  }
+]

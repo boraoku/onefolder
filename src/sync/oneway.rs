@@ -448,6 +448,17 @@ pub async fn run_destination(
         }
     };
     let listing: HashSet<String> = entries.iter().map(|e| e.path.clone()).collect();
+    // How names compare between the two sides, for move detection: a
+    // OneDrive destination ignores case; a local folder does on macOS, and
+    // on Linux only on a FAT, exFAT or NTFS drive or a Windows drive.
+    let case = mv::Case::between(
+        mv::Case::of(volume::ignores_case(Path::new(&source)).await),
+        if onedrive {
+            mv::Case::Insensitive
+        } else {
+            mv::Case::of(volume::ignores_case(Path::new(&target.target)).await)
+        },
+    );
     let stats = dry_events.iter().rev().find_map(|e| match e {
         Event::Stats(s) => Some(s),
         _ => None,
@@ -465,14 +476,15 @@ pub async fn run_destination(
     // Files moved locally whose old copy is still on the destination.
     match source_listed {
         Ok(source_entries) => {
-            // Compared as rclone compares them on these destinations:
-            // composed and ignoring case, so `Report.pdf` renamed to
-            // `report.pdf` is the same file, not one left alone.
+            // Compared composed, and ignoring case where either side
+            // does (`case`): there `Report.pdf` renamed to `report.pdf` is
+            // the same file, not one left alone; where neither does (two
+            // ext4 folders) it is a move.
             let source_keys: HashSet<String> =
-                source_entries.iter().map(|e| mv::fold(&e.path)).collect();
+                source_entries.iter().map(|e| case.key(&e.path)).collect();
             let dest_only: Vec<Entry> = entries
                 .iter()
-                .filter(|e| !source_keys.contains(&mv::fold(&e.path)))
+                .filter(|e| !source_keys.contains(&case.key(&e.path)))
                 .cloned()
                 .collect();
             preview.destination_only = dest_only.len() as u64;
@@ -490,6 +502,7 @@ pub async fn run_destination(
             let found = {
                 let finding = find_moves(
                     run.rclone,
+                    case,
                     &source,
                     &target.target,
                     onedrive,
@@ -663,7 +676,7 @@ pub async fn run_destination(
     if preview.moves_choice == MovesChoice::Move && !preview.moves.is_empty() {
         reporter.step(Step::Moving);
         moved = run_moves(
-            run.rclone, &target, &preview, &mut log, interrupts, reporter,
+            run.rclone, &target, &preview, case, &mut log, interrupts, reporter,
         )
         .await;
         if interrupts.interrupted() {
@@ -768,6 +781,7 @@ fn decided(log: &mut Option<RunLog>, preview: &Preview, answer: MovesAnswer, by:
 #[allow(clippy::too_many_arguments)]
 async fn find_moves(
     rclone: &Rclone,
+    case: mv::Case,
     source: &str,
     target: &str,
     onedrive: bool,
@@ -796,15 +810,15 @@ async fn find_moves(
     let dest_hashes = dest_hashes.map_err(|e| format!("could not hash the destination: {e}"))?;
     let times: std::collections::HashMap<String, String> = source_entries
         .iter()
-        .map(|e| (mv::fold(&e.path), e.mod_time.clone()))
+        .map(|e| (case.key(&e.path), e.mod_time.clone()))
         .collect();
     let unhashed: Vec<String> = source_paths
         .iter()
         .filter(|p| !source_hashes.contains_key(*p))
         .cloned()
         .collect();
-    let pairs = mv::pair(new, &times, dest_only, &source_hashes, &dest_hashes);
-    let (groups, moves) = mv::group(&pairs, dest_paths);
+    let pairs = mv::pair(case, new, &times, dest_only, &source_hashes, &dest_hashes);
+    let (groups, moves) = mv::group(case, &pairs, dest_paths);
     Ok(Found {
         groups,
         moves,
@@ -863,6 +877,7 @@ async fn run_moves(
     rclone: &Rclone,
     target: &Target,
     preview: &Preview,
+    case: mv::Case,
     log: &mut Option<RunLog>,
     interrupts: &mut InterruptGuard,
     reporter: &mut dyn Reporter,
@@ -897,7 +912,7 @@ async fn run_moves(
             .filter(|m| m.group == i)
             .map(|m| relative_to(&m.from, &g.from))
             .collect();
-        match folder_ready(rclone, target, g, &inside).await {
+        match folder_ready(rclone, target, g, &inside, case).await {
             Ok(()) => folders.push(job),
             Err(why) => {
                 note_value(
@@ -1029,19 +1044,21 @@ fn relative_to(path: &str, folder: &str) -> String {
 /// A folder move goes ahead only when the old folder holds exactly the
 /// files being moved (`inside`, relative to it), counting the files the
 /// sync leaves out (a move takes the whole folder), and the new folder
-/// does not exist yet. Paths compare as the destination does (composed,
-/// ignoring case), so a file added since the preview stops the folder move.
+/// does not exist yet. Paths compare as the moves were found (composed,
+/// ignoring case where `case` says so), so a file added since the preview
+/// stops the folder move.
 async fn folder_ready(
     rclone: &Rclone,
     target: &Target,
     g: &MoveGroup,
     inside: &[String],
+    case: mv::Case,
 ) -> Result<(), String> {
     let old = listing::join(&target.target, &g.from);
     match listing::list_filtered(rclone, &old, &[], target.fast_list).await {
         Ok(entries) => {
-            let there: HashSet<String> = entries.iter().map(|e| mv::fold(&e.path)).collect();
-            let moving: HashSet<String> = inside.iter().map(|p| mv::fold(p)).collect();
+            let there: HashSet<String> = entries.iter().map(|e| case.key(&e.path)).collect();
+            let moving: HashSet<String> = inside.iter().map(|p| case.key(p)).collect();
             if there != moving {
                 let extra = there.difference(&moving).count();
                 let missing = moving.difference(&there).count();
@@ -1442,9 +1459,7 @@ mod tests {
     use crate::rclone::events;
 
     fn fixture(name: &str) -> String {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/rclone")
-            .join(name);
+        let path = crate::rclone::fixture_path(name);
         std::fs::read_to_string(path).unwrap()
     }
 

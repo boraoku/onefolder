@@ -1,0 +1,135 @@
+{
+   "blockdevices": [
+      {
+         "path": "/dev/loop0",
+         "uuid": "87c01f90-c751-4b21-858a-300fc947ee16",
+         "partuuid": null,
+         "label": "Backup",
+         "fstype": "ext4",
+         "ro": false,
+         "mountpoints": [
+             "/media/bora/Backup"
+         ]
+      },{
+         "path": "/dev/loop1",
+         "uuid": null,
+         "partuuid": null,
+         "label": null,
+         "fstype": null,
+         "ro": false,
+         "mountpoints": [
+             null
+         ]
+      },{
+         "path": "/dev/loop2",
+         "uuid": "3C49-0C2E",
+         "partuuid": null,
+         "label": "STICK",
+         "fstype": "vfat",
+         "ro": false,
+         "mountpoints": [
+             "/media/bora/STICK"
+         ]
+      },{
+         "path": "/dev/nbd0",
+         "uuid": null,
+         "partuuid": null,
+         "label": null,
+         "fstype": null,
+         "ro": false,
+         "mountpoints": [
+             null
+         ]
+      },{
+         "path": "/dev/nbd1",
+         "uuid": null,
+         "partuuid": null,
+         "label": null,
+         "fstype": null,
+         "ro": false,
+         "mountpoints": [
+             null
+         ]
+      },{
+         "path": "/dev/nbd2",
+         "uuid": null,
+         "partuuid": null,
+         "label": null,
+         "fstype": null,
+         "ro": false,
+         "mountpoints": [
+             null
+         ]
+      },{
+         "path": "/dev/nbd3",
+         "uuid": null,
+         "partuuid": null,
+         "label": null,
+         "fstype": null,
+         "ro": false,
+         "mountpoints": [
+             null
+         ]
+      },{
+         "path": "/dev/zram0",
+         "uuid": null,
+         "partuuid": null,
+         "label": null,
+         "fstype": null,
+         "ro": false,
+         "mountpoints": [
+             "[SWAP]"
+         ]
+      },{
+         "path": "/dev/vda",
+         "uuid": null,
+         "partuuid": null,
+         "label": null,
+         "fstype": null,
+         "ro": true,
+         "mountpoints": [
+             null
+         ]
+      },{
+         "path": "/dev/vdb",
+         "uuid": null,
+         "partuuid": null,
+         "label": null,
+         "fstype": null,
+         "ro": false,
+         "mountpoints": [
+             null
+         ]
+      },{
+         "path": "/dev/vdb1",
+         "uuid": null,
+         "partuuid": null,
+         "label": null,
+         "fstype": null,
+         "ro": false,
+         "mountpoints": [
+             "/mnt/machines/of-ubuntu", "/Users/bora/OrbStack/of-ubuntu", "/opt/orbstack-guest/data", "/"
+         ]
+      },{
+         "path": "/dev/vdc",
+         "uuid": "42fb9547-c77c-435f-84ec-23d9cf4badba",
+         "partuuid": null,
+         "label": null,
+         "fstype": "swap",
+         "ro": false,
+         "mountpoints": [
+             "[SWAP]"
+         ]
+      },{
+         "path": "/dev/loop1p1",
+         "uuid": "FAF5-F3D8",
+         "partuuid": "2085294b-a85d-4187-b78f-0874aac3538d",
+         "label": "My Passport",
+         "fstype": "exfat",
+         "ro": false,
+         "mountpoints": [
+             "/media/bora/My Passport"
+         ]
+      }
+   ]
+}

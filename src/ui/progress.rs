@@ -316,7 +316,7 @@ impl ProgressModel {
                 Recent::Done(f) if f.change == Change::Deleted => {
                     let side = match f.side {
                         Where::Destination => place(kind),
-                        Where::Local => "this Mac",
+                        Where::Local => crate::platform::words().this_computer,
                     };
                     Line::from(vec![
                         Span::raw("  "),

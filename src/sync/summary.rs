@@ -463,9 +463,7 @@ mod tests {
     }
 
     fn fixture(name: &str) -> Vec<Event> {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/rclone")
-            .join(name);
+        let path = crate::rclone::fixture_path(name);
         events::decode_all(&std::fs::read_to_string(path).unwrap())
     }
 
@@ -513,19 +511,32 @@ mod tests {
         assert_eq!(reported, 1);
         assert_eq!(acc.file_errors().len(), 1);
         assert_eq!(acc.file_errors()[0].path, "locked.txt");
-        assert!(acc.file_errors()[0]
-            .reason
-            .starts_with("couldn't copy from /fixture/d/src/"));
+        // rclone words an unreadable file differently on Linux, where
+        // `just fixtures` may have recorded it.
+        let linux = events::fixtures_recorded_on_linux();
+        let (raw, named) = if linux {
+            (
+                "failed to open source object: open /fixture/d/src/",
+                "failed to open source object: open locked.txt: permission denied",
+            )
+        } else {
+            (
+                "couldn't copy from /fixture/d/src/",
+                "couldn't copy from locked.txt to locked.txt.00000000.partial: errno -1",
+            )
+        };
+        assert!(
+            acc.file_errors()[0].reason.starts_with(raw),
+            "{}",
+            acc.file_errors()[0].reason
+        );
         // With the roots known, the reason names the file as the summary does.
         let mut acc = Accumulator::new(&Preview::default(), HashSet::new())
             .with_roots(&["/fixture/d/src", "/fixture/d/dst/"]);
         for e in fixture("copy-file-error.jsonl") {
             acc.apply(&e);
         }
-        assert_eq!(
-            acc.file_errors()[0].reason,
-            "couldn't copy from locked.txt to locked.txt.00000000.partial: errno -1"
-        );
+        assert_eq!(acc.file_errors()[0].reason, named);
         assert_eq!(acc.added, 1);
         assert_eq!(acc.outcome(&finished(1, false)), Outcome::Partial);
         assert_eq!(

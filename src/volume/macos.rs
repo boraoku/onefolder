@@ -45,6 +45,7 @@ pub fn statfs(path: &Path) -> io::Result<Mount> {
         device: c_string(&st.f_mntfromname),
         fstype: c_string(&st.f_fstypename),
         read_only: st.f_flags & (libc::MNT_RDONLY as u32) != 0,
+        root: None,
     })
 }
 
@@ -73,6 +74,7 @@ pub fn mounts() -> io::Result<Vec<Mount>> {
             device: c_string(&st.f_mntfromname),
             fstype: c_string(&st.f_fstypename),
             read_only: st.f_flags & (libc::MNT_RDONLY as u32) != 0,
+            root: None,
         })
         .collect())
 }
@@ -88,7 +90,7 @@ fn c_string(chars: &[libc::c_char]) -> String {
 }
 
 /// Runs `diskutil info -plist <mount point>` and parses the answer.
-pub async fn diskutil_info(mount_point: &str) -> Result<DiskInfo, String> {
+pub async fn disk_info(mount_point: &str) -> Result<DiskInfo, String> {
     let program = Path::new(DISKUTIL);
     let args = ["info", "-plist", mount_point];
     let run = exec::run_capture(program, &args);
@@ -226,7 +228,7 @@ mod tests {
         // A temp dir sits on the data volume, not on the firmlink above it.
         let dir = tempfile::tempdir().unwrap();
         let m = statfs(dir.path()).unwrap();
-        assert!(is_startup(&m.mount_point), "{m:?}");
+        assert!(is_startup(&m.mount_point, &m.fstype), "{m:?}");
         assert_ne!(m.mount_point, dir.path().display().to_string());
 
         assert_eq!(
@@ -245,7 +247,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let found = identify(&dir.path().join("not/yet/created")).await.unwrap();
         assert_eq!(found.identity, None);
-        assert!(is_startup(&found.mount_point), "{found:?}");
+        assert!(is_startup(&found.mount_point, "apfs"), "{found:?}");
         assert!(!found.read_only);
         // Measured through the closest existing parent.
         let id = startup_identity(&dir.path().join("not/yet")).await;
@@ -289,6 +291,7 @@ mod tests {
             volume_uuid: Some("A1B2C3D4-0000-4E5F-8A9B-000000000001".into()),
             partition_uuid: None,
             device: None,
+            mount_root: None,
         };
         let err = check(&docs, &expected, true).await.unwrap_err();
         assert_eq!(err.code(), "not-mounted");

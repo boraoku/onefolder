@@ -519,7 +519,7 @@ impl Browser {
             }
             KeyCode::Char('v') if self.is_local() => {
                 self.came_from = None;
-                self.open("/Volumes".to_string());
+                self.open(crate::platform::drives_folder());
             }
             KeyCode::Char('.') => {
                 self.hidden = !self.hidden;

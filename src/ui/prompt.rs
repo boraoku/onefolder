@@ -531,7 +531,7 @@ pub fn folder_outcome(answer: FolderAnswer, kind: &str) -> String {
     match answer {
         FolderAnswer::Delete => format!("delete it on {place} too"),
         FolderAnswer::Keep => format!("keep it on {place}, stop syncing it"),
-        FolderAnswer::Restore => format!("restore it to this Mac from {place}"),
+        FolderAnswer::Restore => format!("restore it to {} from {place}", this_computer()),
         FolderAnswer::CancelRun => "stop the run".to_string(),
     }
 }
@@ -579,15 +579,22 @@ fn plan_directions(p: &Plan) -> [(String, Vec<PlannedFile>, u64); 2] {
             p.to_remote.bytes,
         ),
         (
-            "New and changed, to this Mac".to_string(),
+            format!("New and changed, to {}", this_computer()),
             down,
             p.to_local.bytes,
         ),
     ]
 }
 
+/// `this Mac`, or `this computer` on Linux.
+fn this_computer() -> &'static str {
+    crate::platform::words().this_computer
+}
+
 /// Title of the plan's list of deletions on this Mac.
-const DELETE_LOCAL: &str = "Will be deleted on this Mac";
+fn delete_local() -> String {
+    format!("Will be deleted on {}", this_computer())
+}
 
 fn plan_body(p: &Plan, keyed: bool) -> Vec<Vec<Segment>> {
     let place = place(&p.destination_type);
@@ -601,9 +608,11 @@ fn plan_body(p: &Plan, keyed: bool) -> Vec<Vec<Segment>> {
     ];
     let to_place = format!("To {place}");
     let del_place = format!("Delete on {place}");
-    let label_w = del_place.len().max("Delete on this Mac".len()) + 2;
+    let del_here = format!("Delete on {}", this_computer());
+    let to_here = format!("To {}", this_computer());
+    let label_w = del_place.len().max(del_here.len()) + 2;
     lines.push(direction_row(&to_place, &p.to_remote, label_w));
-    lines.push(direction_row("To this Mac", &p.to_local, label_w));
+    lines.push(direction_row(&to_here, &p.to_local, label_w));
     lines.push(count_row(
         &del_place,
         p.delete_remote.len() as u64,
@@ -611,7 +620,7 @@ fn plan_body(p: &Plan, keyed: bool) -> Vec<Vec<Segment>> {
         Tone::Warning,
     ));
     lines.push(count_row(
-        "Delete on this Mac",
+        &del_here,
         p.delete_local.len() as u64,
         label_w,
         Tone::Warning,
@@ -636,7 +645,10 @@ fn plan_body(p: &Plan, keyed: bool) -> Vec<Vec<Segment>> {
 
     if !p.folders.is_empty() {
         lines.push(vec![]);
-        lines.push(vec![seg("  Folders deleted on this Mac", Tone::Bold)]);
+        lines.push(vec![seg(
+            format!("  Folders deleted on {}", this_computer()),
+            Tone::Bold,
+        )]);
         for d in &p.folders {
             lines.push(vec![
                 seg(
@@ -664,7 +676,7 @@ fn plan_body(p: &Plan, keyed: bool) -> Vec<Vec<Segment>> {
     }
     if !p.delete_local.is_empty() {
         lines.push(vec![]);
-        lines.push(vec![seg(format!("  {DELETE_LOCAL}"), Tone::Bold)]);
+        lines.push(vec![seg(format!("  {}", delete_local()), Tone::Bold)]);
         let mut local = p.delete_local.clone();
         local.sort();
         for path in local.iter().take(PREVIEW_PATHS) {
@@ -703,7 +715,7 @@ fn plan_body(p: &Plan, keyed: bool) -> Vec<Vec<Segment>> {
     for big in &p.big {
         let side = match big.side {
             Where::Destination => place.to_string(),
-            Where::Local => "this Mac".to_string(),
+            Where::Local => this_computer().to_string(),
         };
         let text = match big.kind {
             BigKind::Deletions => format!(
@@ -774,7 +786,8 @@ pub fn resync_lines(o: &ResyncOffer) -> Vec<Vec<Segment>> {
     }
     lines.push(vec![]);
     let label = format!("To {place}");
-    let label_w = label.len().max("To this Mac".len()) + 2;
+    let to_here = format!("To {}", this_computer());
+    let label_w = label.len().max(to_here.len()) + 2;
     if o.destination_missing {
         paragraph(
             &mut lines,
@@ -789,7 +802,7 @@ pub fn resync_lines(o: &ResyncOffer) -> Vec<Vec<Segment>> {
         return lines;
     }
     lines.push(direction_row(&label, &o.to_remote, label_w));
-    lines.push(direction_row("To this Mac", &o.to_local, label_w));
+    lines.push(direction_row(&to_here, &o.to_local, label_w));
     if !o.kept.is_empty() {
         lines.push(vec![]);
         lines.push(vec![seg(
@@ -1050,7 +1063,7 @@ pub fn plan_full_lists(p: &Plan) -> Vec<FullList> {
     let mut out = Vec::new();
     if p.delete_local.len() > PREVIEW_PATHS {
         out.push(FullList::paths(
-            DELETE_LOCAL,
+            delete_local(),
             &p.delete_local,
             Tone::Warning,
         ));
@@ -1654,7 +1667,7 @@ pub fn choice_labels(kind: &str) -> [String; 3] {
     [
         format!("Delete it on {place} too, with the hidden and system files in it"),
         format!("Keep it on {place} and stop syncing this folder"),
-        format!("Restore it to this Mac from {place}"),
+        format!("Restore it to {} from {place}", this_computer()),
     ]
 }
 
@@ -1687,16 +1700,20 @@ pub fn folder_lines(kind: &str, f: &DeletedFolder, n: usize, of: usize) -> Vec<V
         paragraph(
             &mut lines,
             &format!(
-                "This may be a rename: the plan also adds {} on this Mac. Deleting is then \
+                "This may be a rename: the plan also adds {} on {}. Deleting is then \
                  right, as the renamed copy goes up too.",
-                plural(f.files, "new file", "new files")
+                plural(f.files, "new file", "new files"),
+                this_computer()
             ),
             Tone::Dim,
         );
     }
     lines.push(vec![]);
     lines.push(vec![seg(
-        format!("  Not on your Mac any more. What should happen on {place}?"),
+        format!(
+            "  Not on {} any more. What should happen on {place}?",
+            crate::platform::words().your_computer
+        ),
         Tone::Plain,
     )]);
     lines
@@ -1831,7 +1848,8 @@ impl FolderPrompt {
         ]));
         lines.push(Line::default());
         lines.push(Line::from(format!(
-            "  Not on your Mac any more. What should happen to them on {place}?"
+            "  Not on {} any more. What should happen to them on {place}?",
+            crate::platform::words().your_computer
         )));
         lines.push(Line::default());
         let mut all = vec![Span::raw("  For all:  ")];
@@ -2663,6 +2681,28 @@ pub mod tests {
             "{text}"
         );
         assert!(text.contains("Not on your Mac any more. What should happen on OneDrive?"));
+        {
+            // On Linux and WSL the words name "this computer".
+            let _linux = crate::platform::testing::describe(crate::platform::Os::Linux);
+            let text = lines_text(&folder_lines("onedrive", &one.folders[0], 1, 1), false);
+            assert!(
+                text.contains("Not on your computer any more. What should happen on OneDrive?"),
+                "{text}"
+            );
+            let choices = choice_labels("onedrive");
+            assert_eq!(choices[2], "Restore it to this computer from OneDrive");
+            let plan = lines_text(&plan_lines(&plan_mockup()), false);
+            for words in [
+                "  To this computer              1 file        14 KB",
+                "  Delete on this computer       1 file",
+                "  Folders deleted on this computer",
+                "  Will be deleted on this computer",
+                "  New and changed, to this computer",
+            ] {
+                assert!(plan.contains(words), "{words}\n{plan}");
+            }
+            assert!(!plan.contains("Mac"), "{plan}");
+        }
         let mut renamed = folder("Drafts", 3, 30);
         renamed.maybe_rename = true;
         renamed.measured = false;

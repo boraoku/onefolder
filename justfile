@@ -20,20 +20,31 @@ lint:
     cargo fmt --check
     cargo clippy --all-targets -- -D warnings
 
-# Re-record the rclone JSON log fixtures with the rclone on PATH, then check
-# the decoder's snapshots without updating them: fails if rclone's output changed
+# Re-record the rclone JSON log fixtures with the rclone on PATH, into a
+# temporary folder, then check the decoder's snapshots against them without
+# updating anything: fails if rclone's output changed. The committed
+# fixtures are never rewritten. Recordings made on Linux are checked against
+# the `@linux` snapshots, since rclone's local backend words some lines
+# differently there
 fixtures:
-    scripts/record-fixtures.sh
-    INSTA_UPDATE=no INSTA_FORCE_PASS=0 cargo test --bin onefolder -- rclone::events rclone::listing rclone::exec::tests::exit_codes_follow_rclones_documentation sync::
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir=$(mktemp -d "${TMPDIR:-/tmp}/onefolder-fixtures.XXXXXX")
+    trap 'rm -rf "$dir"' EXIT
+    scripts/record-fixtures.sh "$dir"
+    ONEFOLDER_RCLONE_FIXTURES="$dir" ONEFOLDER_FIXTURES_RECORDED_ON={{os()}} INSTA_UPDATE=no INSTA_FORCE_PASS=0 \
+        cargo test --bin onefolder -- rclone::events rclone::listing rclone::exec::tests::exit_codes_follow_rclones_documentation sync::
 
 # Checks a release before tagging: dist's plan, the release workflow is
 # current, then both macOS targets built with dist and joined into the
-# universal binary, which must hold both architectures and run
+# universal binary, which must hold both architectures and run. macOS only
+# (lipo, and the Linux targets cannot be linked from a Mac): the Linux
+# builds are checked by the release workflow on GitHub's Linux runners
 release-check:
     @grep -q '^## Unreleased' CHANGELOG.md && echo "Note: CHANGELOG.md still says '## Unreleased'. Before tagging, run: just release-notes <version> (dist uses that section as the release notes)" || true
     dist plan
     dist generate --check
-    dist build --artifacts=local
+    dist build --artifacts=local --target=aarch64-apple-darwin --target=x86_64-apple-darwin
     scripts/universal.sh target/distrib
     file target/distrib/onefolder-universal-apple-darwin/onefolder
     lipo -archs target/distrib/onefolder-universal-apple-darwin/onefolder

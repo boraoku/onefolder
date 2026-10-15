@@ -74,6 +74,14 @@ fn navigation_opens_folders_and_goes_back_up_to_where_it_was() {
     assert_eq!(b.folder(), home());
     b.handle_key(key(KeyCode::Char('v')));
     assert_eq!(b.folder(), "/Volumes");
+    {
+        // On Linux the drives are under /media/<user>, /run/media/<user>,
+        // /media or /mnt, whichever is there first.
+        let _linux = crate::platform::testing::describe(crate::platform::Os::Linux);
+        b.handle_key(key(KeyCode::Char('v')));
+        assert_eq!(b.folder(), crate::platform::drives_folder());
+        assert_ne!(b.folder(), "/Volumes");
+    }
     assert_eq!(b.handle_key(key(KeyCode::Esc)), Some(Outcome::Back));
 }
 

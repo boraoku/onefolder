@@ -362,12 +362,13 @@ mod tests {
     /// (with a nested one), Photos lost two of three files.
     #[test]
     fn recorded_folder_plan() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rclone");
-        let prior =
-            bisync::parse_listing(&std::fs::read_to_string(dir.join("bisync.path1.lst")).unwrap())
-                .unwrap();
+        let prior = bisync::parse_listing(
+            &std::fs::read_to_string(crate::rclone::fixture_path("bisync.path1.lst")).unwrap(),
+        )
+        .unwrap();
         let events = events::decode_all(
-            &std::fs::read_to_string(dir.join("bisync-folder-plan.jsonl")).unwrap(),
+            &std::fs::read_to_string(crate::rclone::fixture_path("bisync-folder-plan.jsonl"))
+                .unwrap(),
         );
         let lines: Vec<PlanLine> = events
             .into_iter()

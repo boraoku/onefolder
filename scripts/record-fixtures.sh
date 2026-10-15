@@ -6,10 +6,13 @@
 # printed under tests/fixtures/rclone/. Temporary paths become /fixture so
 # the files are stable; everything else is rclone's own output, unedited.
 #
-#   scripts/record-fixtures.sh            # or: just fixtures
+#   scripts/record-fixtures.sh            # rewrites tests/fixtures/rclone
+#   scripts/record-fixtures.sh DIR        # writes into DIR instead
 #
-# `just fixtures` then runs the decoder's snapshot tests without updating
-# them, so a new rclone release that changes its log lines fails loudly.
+# `just fixtures` records into a temporary folder and runs the decoder's
+# snapshot tests against it (ONEFOLDER_RCLONE_FIXTURES) without updating
+# them, so a new rclone release that changes its log lines fails loudly and
+# the committed fixtures stay as they are.
 
 set -euo pipefail
 

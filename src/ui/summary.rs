@@ -61,14 +61,17 @@ pub fn summary_lines(s: &Summary, width: Option<usize>) -> Vec<Vec<Segment>> {
     ]);
 
     let counts = match s.mode {
-        Mode::TwoWay => format!(
-            "Added: {} to {remote}, {} to Mac | Updated: {} | Deleted: {} on {remote}, {} on Mac",
-            thousands(s.added.remote),
-            thousands(s.added.local),
-            thousands(s.updated.total()),
-            thousands(s.deleted.remote),
-            thousands(s.deleted.local)
-        ),
+        Mode::TwoWay => {
+            let w = crate::platform::words();
+            format!(
+                "Added: {} to {remote}, {} | Updated: {} | Deleted: {} on {remote}, {}",
+                thousands(s.added.remote),
+                w.to_local(thousands(s.added.local)),
+                thousands(s.updated.total()),
+                thousands(s.deleted.remote),
+                w.on_local(thousands(s.deleted.local))
+            )
+        }
         Mode::OneWay => format!(
             "Added: {} | Updated: {} | Deleted: 0 (one-way never deletes)",
             thousands(s.added.total()),
@@ -514,6 +517,28 @@ Log: ~/.local/share/onefolder/logs/documents/d-7f3a/2026-10-13T094102.jsonl
 ======================================================================
 ";
         assert_eq!(render_plain(&two_way()), expected);
+    }
+
+    /// On Linux and WSL the counts on this side say "here".
+    #[test]
+    fn linux_counts_say_here() {
+        let _linux = crate::platform::testing::describe(crate::platform::Os::Linux);
+        let w = crate::platform::words();
+        let text = render_plain(&two_way());
+        assert!(
+            text.contains(&format!(
+                "Added: 14 to OneDrive, {} | Updated: 3 | Deleted: 0 on OneDrive, {}\n",
+                w.to_local(2),
+                w.on_local(1)
+            )),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "Added: 14 to OneDrive, 2 here | Updated: 3 | Deleted: 0 on OneDrive, 1 here\n"
+            ),
+            "{text}"
+        );
     }
 
     #[test]

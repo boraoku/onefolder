@@ -76,7 +76,34 @@ pub enum DetectError {
 impl DetectError {
     /// The friendly message printed before exiting with code 2.
     pub fn user_message(&self) -> String {
+        use crate::platform::{self, Os, RcloneAction};
         let min = MINIMUM.short();
+        if platform::ui_os() != Os::Mac {
+            let (problem, action) = match self {
+                DetectError::NotFound => {
+                    ("it is not on your PATH".to_string(), RcloneAction::Install)
+                }
+                DetectError::TooOld { found, .. } => (
+                    format!("the one on your PATH is {found}"),
+                    RcloneAction::Upgrade,
+                ),
+                DetectError::Unreadable { path, .. } => (
+                    format!("{} did not report its version", path.display()),
+                    RcloneAction::Reinstall,
+                ),
+            };
+            let advice = platform::rclone_advice(action);
+            let mut chars = advice.chars();
+            let advice = chars
+                .next()
+                .map(|c| c.to_ascii_uppercase().to_string() + chars.as_str())
+                .unwrap_or_default();
+            return format!(
+                "OneFolder needs rclone {min} or newer, and {problem}.\n\
+                 \n  {advice}\
+                 \n  Then run onefolder again.\n"
+            );
+        }
         match self {
             DetectError::NotFound => format!(
                 "OneFolder needs rclone {min} or newer, and it is not on your PATH.\n\

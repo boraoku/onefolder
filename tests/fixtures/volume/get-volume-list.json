@@ -1,0 +1,16 @@
+﻿[
+    {
+        "DriveLetter":  "E",
+        "UniqueId":  "\\\\?\\Volume{a1b2c3d4-0000-11ef-8a9b-000000000002}\\",
+        "FileSystemLabel":  "写真",
+        "FileSystem":  "exFAT",
+        "DriveType":  2
+    },
+    {
+        "DriveLetter":  70,
+        "UniqueId":  "\\\\?\\Volume{a1b2c3d4-0000-11ef-8a9b-000000000003}\\",
+        "FileSystemLabel":  "",
+        "FileSystem":  "FAT32",
+        "DriveType":  2
+    }
+]

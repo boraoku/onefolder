@@ -415,12 +415,14 @@ fn rclone_report(rclone: &Result<Rclone, DetectError>) -> RcloneReport {
             },
             minimum,
             message: Some(match e {
-                DetectError::NotFound => {
-                    "not found on PATH · install it with: brew install rclone".into()
-                }
-                DetectError::TooOld { .. } => {
-                    "too old · update it with: brew upgrade rclone".into()
-                }
+                DetectError::NotFound => format!(
+                    "not found on PATH · {}",
+                    crate::platform::rclone_advice(crate::platform::RcloneAction::Install)
+                ),
+                DetectError::TooOld { .. } => format!(
+                    "too old · {}",
+                    crate::platform::rclone_advice(crate::platform::RcloneAction::Upgrade)
+                ),
                 DetectError::Unreadable { detail, .. } => {
                     format!("could not read its version: {detail}")
                 }

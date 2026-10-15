@@ -759,7 +759,7 @@ pub enum Lock {
     /// A lock held by a running rclone.
     Held { pid: i32, path: PathBuf },
     /// A lock whose process is gone, is not rclone (the id was reused), or
-    /// was last renewed before the Mac started: safe to remove.
+    /// was last renewed before the computer started: safe to remove.
     Stale { pid: i32, path: PathBuf },
     /// A lock whose process id cannot be read: left for the user.
     Unreadable { path: PathBuf },
@@ -827,7 +827,7 @@ pub fn pid_alive(pid: i32) -> bool {
 }
 
 /// Whether a lock still belongs to a running bisync. `command` is the
-/// process's name (`ps -o comm=`) and `boot` the Mac's start, in Unix
+/// process's name (`ps -o comm=`) and `boot` the computer's start, in Unix
 /// seconds, each when known. A process id is reused after a restart, so a
 /// lock renewed before the start, or one whose process is not rclone, is
 /// stale whatever `kill` says.
@@ -843,8 +843,14 @@ pub fn lock_is_live(info: LockInfo, alive: bool, command: Option<&str>, boot: Op
     command.is_none_or(|c| c.to_ascii_lowercase().contains("rclone"))
 }
 
-/// The name of a running process (`ps -p <pid> -o comm=`).
+/// The name of a running process: `/proc/<pid>/comm` on Linux, no
+/// process spawned; `ps -p <pid> -o comm=` elsewhere.
 pub(crate) async fn process_name(pid: i32) -> Option<String> {
+    if cfg!(target_os = "linux") {
+        let name = fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
+        let name = name.trim().to_string();
+        return (!name.is_empty()).then_some(name);
+    }
     let pid = pid.to_string();
     let out = super::exec::run_capture(Path::new("/bin/ps"), &["-p", &pid, "-o", "comm="])
         .await
@@ -853,9 +859,13 @@ pub(crate) async fn process_name(pid: i32) -> Option<String> {
     (out.status.success() && !name.is_empty()).then_some(name)
 }
 
-/// When the Mac started (`sysctl -n kern.boottime`: `{ sec = 1760313600,
-/// usec = 0 } ...`), in Unix seconds.
+/// When the computer started, in Unix seconds: `btime` in `/proc/stat` on
+/// Linux, `sysctl -n kern.boottime` (`{ sec = 1760313600, usec = 0 }
+/// ...`) on macOS.
 pub(crate) async fn boot_time() -> Option<i64> {
+    if cfg!(target_os = "linux") {
+        return parse_proc_stat_btime(&fs::read_to_string("/proc/stat").ok()?);
+    }
     let out = super::exec::run_capture(Path::new("/usr/sbin/sysctl"), &["-n", "kern.boottime"])
         .await
         .ok()?;
@@ -870,6 +880,14 @@ pub fn parse_boot_time(text: &str) -> Option<i64> {
         .next()?
         .parse()
         .ok()
+}
+
+/// Reads the `btime` line of Linux's `/proc/stat` (the boot time, in Unix
+/// seconds).
+pub fn parse_proc_stat_btime(text: &str) -> Option<i64> {
+    text.lines()
+        .find_map(|line| line.strip_prefix("btime "))
+        .and_then(|v| v.trim().parse().ok())
 }
 
 /// Looks for a lock file in the working directory and says whose it is.
@@ -917,9 +935,7 @@ mod tests {
     use crate::rclone::events::{self, Event};
 
     fn fixture(name: &str) -> String {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/rclone")
-            .join(name);
+        let path = crate::rclone::fixture_path(name);
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
     }
 
@@ -1322,7 +1338,7 @@ mod tests {
         );
         assert!(
             !lock_is_live(info, true, Some("rclone"), Some(3_000)),
-            "renewed before the Mac started"
+            "renewed before the computer started"
         );
         // Unknown name or start time: trust kill(pid, 0).
         assert!(lock_is_live(info, true, None, None));
@@ -1331,6 +1347,12 @@ mod tests {
             Some(1_791_756_928)
         );
         assert_eq!(parse_boot_time("nonsense"), None);
+        let stat = "cpu  10132153 290696 3084719 46828483 16683 0 25195 0 0 0\n\
+                    intr 1462898 0 0\nctxt 115315133\nbtime 1791756928\n\
+                    processes 86031\nprocs_running 6\n";
+        assert_eq!(parse_proc_stat_btime(stat), Some(1_791_756_928));
+        assert_eq!(parse_proc_stat_btime("cpu 1 2 3\n"), None);
+        assert_eq!(parse_proc_stat_btime("btime soon\n"), None);
         let recorded = lock_info(&fixture("bisync.lck")).unwrap();
         assert!(recorded.renewed.is_some());
     }

@@ -1,7 +1,8 @@
 <div align="center">
   <h1>OneFolder</h1>
-  <p><b>Keep local folders in sync with OneDrive accounts and external drives, one-way or two-way, from a calm terminal app for macOS.</b></p>
+  <p><b>Keep local folders in sync with OneDrive accounts and external drives, one-way or two-way, from a calm terminal app for macOS, Linux and Windows (WSL).</b></p>
   <a href="https://github.com/boraoku/onefolder/releases"><img src="https://img.shields.io/github/v/release/boraoku/onefolder?label=version&style=flat-square" alt="Version"></a>
+  <a href="https://github.com/boraoku/onefolder/releases"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey?style=flat-square" alt="Platforms"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-blue.svg?style=flat-square" alt="Licence"></a>
   <a href="https://github.com/boraoku/onefolder/commits"><img src="https://img.shields.io/github/commit-activity/m/boraoku/onefolder?style=flat-square" alt="Commits"></a>
 </div>
@@ -10,7 +11,7 @@
   <img src="./docs/img/run.png" alt="OneFolder transferring an engineering folder to OneDrive, with per-file progress" width="1000" />
 </p>
 
-OneFolder keeps local folders in sync with OneDrive accounts and external drives. It is a single terminal program for macOS that drives [rclone](https://rclone.org) to do the copying, and adds the parts that make a sync safe to run every day: a preview before anything changes, a check that an external drive really is the drive you set up, a question before a deleted folder is deleted on the other side, and a log of every run.
+OneFolder keeps local folders in sync with OneDrive accounts and external drives. It is a single terminal program for macOS, Linux and Windows (through WSL) that drives [rclone](https://rclone.org) to do the copying, and adds the parts that make a sync safe to run every day: a preview before anything changes, a check that an external drive really is the drive you set up, a question before a deleted folder is deleted on the other side, and a log of every run.
 
 Each job has one local source folder and one or more destinations. Each destination is either a folder on a OneDrive account or a local folder (usually on an external drive), and each one is synced either one-way or two-way.
 
@@ -18,9 +19,9 @@ Each job has one local source folder and one or more destinations. Each destinat
 
 - **OneDrive and external drives**: Each job syncs one local folder to any mix of OneDrive folders (personal or business accounts) and local folders on external drives
 - **One-way or two-way**: One-way copies new and changed files and never deletes; two-way keeps both sides the same with `rclone bisync`
-- **Moves, not duplicates**: When you move or rename files or folders on your Mac, a one-way run notices and offers to move them on the destination instead of uploading them again, so a moved file is not sent twice or left behind under its old name. Where OneFolder cannot tell which file moved (identical copies it cannot tell apart, or empty files), it uploads as before and the old copy stays
+- **Moves, not duplicates**: When you move or rename files or folders on your computer, a one-way run notices and offers to move them on the destination instead of uploading them again, so a moved file is not sent twice or left behind under its old name. Where OneFolder cannot tell which file moved (identical copies it cannot tell apart, or empty files), it uploads as before and the old copy stays
 - **Calm terminal interface**: A Mole-style menu with arrow and vim keys, plus scriptable subcommands with `--dry-run`, `--yes` and `--json`
-- **Folder-deletion prompt**: When a folder disappears from your Mac, OneFolder asks whether to delete it on the destination, keep it there, or restore it
+- **Folder-deletion prompt**: When a folder disappears from your computer, OneFolder asks whether to delete it on the destination, keep it there, or restore it
 - **Conflicts never lose data**: The local copy wins and the other is kept as a `.conflict` copy; every conflict is listed, and run logs are kept until you prune them
 - **Volume identity checks**: Before each run OneFolder proves an external drive is the one you set up, so an unplugged drive is never mistaken for an empty folder
 - **No system clutter**: `.DS_Store`, `._*` resource forks, `Thumbs.db`, `desktop.ini` and other files macOS and Windows make for themselves are never synced; hidden files are left out too unless a job turns on "Copy hidden files"
@@ -29,7 +30,7 @@ Each job has one local source folder and one or more destinations. Each destinat
 
 ## Quick Start
 
-OneFolder requires macOS (version 1 targets macOS only) on Apple silicon or Intel, and rclone 1.66 or newer on your `PATH`, which you can install with Homebrew (`brew install rclone`). The Homebrew formula below installs rclone along with OneFolder. OneFolder itself never installs, updates or downloads rclone. If rclone is missing or too old, every command that needs it says so and exits with code 2.
+OneFolder runs on macOS (Apple silicon or Intel), on Linux (x86_64 or ARM64, with glibc 2.35 or newer: Ubuntu 22.04, Debian 12, Fedora 36 and later; RHEL, Rocky and Alma 9 and Debian 11 are older, so build from source there) and on Windows through WSL (WSL 2, or WSL 1), and needs rclone 1.66 or newer on your `PATH`. Drive checks on Linux need util-linux's `lsblk` 2.33 or newer (it lacks the `PATH` column before that, as on Rocky 8). On a Mac, install rclone with Homebrew (`brew install rclone`); on Linux and WSL, with rclone's own installer from [rclone.org/install](https://rclone.org/install/) (`sudo -v ; curl https://rclone.org/install.sh | sudo bash`), or with Homebrew if you use it there. Your distribution's package may be older than 1.66. The Homebrew formula below installs rclone along with OneFolder. OneFolder itself never installs, updates or downloads rclone. If rclone is missing or too old, every command that needs it says so and exits with code 2.
 
 **Install via Homebrew**
 
@@ -37,11 +38,11 @@ OneFolder requires macOS (version 1 targets macOS only) on Apple silicon or Inte
 brew install boraoku/apps/onefolder
 ```
 
-This taps `boraoku/homebrew-apps` and installs the `onefolder` binary built for your Mac's processor (Apple silicon or Intel). `brew upgrade onefolder` picks up new releases.
+This taps `boraoku/homebrew-apps` and installs the `onefolder` binary built for your processor (Apple silicon or Intel on a Mac; x86_64 or ARM64 on Linux, where it works with [Homebrew on Linux](https://docs.brew.sh/Homebrew-on-Linux) too). `brew upgrade onefolder` picks up new releases.
 
 **Or via script**
 
-Each GitHub release also carries a shell installer:
+Each GitHub release also carries a shell installer, for macOS, Linux and WSL. It puts `onefolder` in `~/.cargo/bin`; on Linux without Homebrew, install rclone from [rclone.org](https://rclone.org/install/) first.
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/boraoku/onefolder/releases/latest/download/onefolder-installer.sh | sh
@@ -100,7 +101,7 @@ Each GitHub release also has a universal binary for both Apple silicon and Intel
 
 **From source**
 
-You need a Rust toolchain from [rustup](https://rustup.rs) (`brew install rustup && rustup default stable`). The repository's `rust-toolchain.toml` pins the exact version (1.93.1), and rustup installs it on the first build.
+You need a Rust toolchain from [rustup](https://rustup.rs) (`brew install rustup && rustup default stable` on a Mac; the installer on rustup.rs on Linux and WSL, with a C compiler such as `build-essential`). The repository's `rust-toolchain.toml` pins the exact version (1.93.1), and rustup installs it on the first build.
 
 ```bash
 git clone https://github.com/boraoku/onefolder.git
@@ -187,7 +188,7 @@ copy_hidden = true
 In the form, the folder fields (the source, a local destination's folder and a OneDrive folder) help you fill them in two ways:
 
 - **Tab completion.** While typing, Tab completes the last part of the path to the first folder whose name starts with what you typed (ignoring case; hidden folders only once you type the dot), another Tab moves to the next match and Shift-Tab to the previous one; the line under the field shows the matches in order with the current one in brackets, such as `2 of 3: Desktop, [Documents], Downloads`. An empty field completes from `~/`, and a path ending in `/` offers the folders inside it. Typing anything else carries on from the completed text. For a OneDrive folder the names are listed from the account first (`listing…`).
-- **Browse.** `b` on a folder field (or Ctrl-B while typing) opens `Choose a folder`: the folders in the current folder, each with a bar and its size, measured in the background and counting up as you watch (`…` while it is still being measured, `+` when part of it could not be read), and the drive's free space. The bars compare the folders shown, so a filter rescales them. A drive mounted inside the folder (each one under `/Volumes`, for example) is not measured folder by folder: it shows the space used on it, as `used 1.2 TB`, with a bar of its own scale. `↑↓`/`j`/`k` move, Enter, `→` or `l` opens a folder, `←`, Backspace or `h` goes up, Space chooses the highlighted folder, `c` chooses the folder you are in, `.` shows hidden folders, `/` filters, `~` goes home and `v` to `/Volumes` (on this Mac), `r` measures again, `g`/`G` and PgUp/PgDn jump, and Esc goes back to the form without a change. Files are not listed; a line under the list says how many there are and their size.
+- **Browse.** `b` on a folder field (or Ctrl-B while typing) opens `Choose a folder`: the folders in the current folder, each with a bar and its size, measured in the background and counting up as you watch (`…` while it is still being measured, `+` when part of it could not be read), and the drive's free space. The bars compare the folders shown, so a filter rescales them. A drive mounted inside the folder (each one under `/Volumes` or `/media/<you>`, for example) is not measured folder by folder: it shows the space used on it, as `used 1.2 TB`, with a bar of its own scale. `↑↓`/`j`/`k` move, Enter, `→` or `l` opens a folder, `←`, Backspace or `h` goes up, Space chooses the highlighted folder, `c` chooses the folder you are in, `.` shows hidden folders, `/` filters, `~` goes home and `v` to the drives (`/Volumes` on a Mac; the first of `/media/<you>`, `/run/media/<you>`, `/media` and `/mnt` that exists on Linux; `/mnt` under WSL), `r` measures again, `g`/`G` and PgUp/PgDn jump, and Esc goes back to the form without a change. Files are not listed; a line under the list says how many there are and their size.
 
 When a local destination is on an external drive, OneFolder records the drive's identity (mount point, name and UUID) at this point. See [External drives](#external-drives).
 
@@ -271,7 +272,7 @@ Changing a destination's path, its account, the job's source, or switching a des
 
 #### Moved files
 
-When you move or rename a file or a folder on your Mac, a plain copy would upload it again under its new name and, since one-way never deletes, leave the old copy on the destination too. OneFolder looks for these during the preview: a new file whose exact content is already on the destination under a name your Mac no longer has. It compares sizes first, then the files' QuickXorHash (OneDrive keeps it with every file, so asking costs nothing; on a drive OneFolder reads only the few files that could match; meanwhile the screen says `checking 12 possible moves`). Names are compared as the destination compares them, ignoring case, so renaming `Report.pdf` to `report.pdf` is not a move and nothing is uploaded for it. A file that was moved and also changed is simply new and is uploaded, and so is an empty file. Where the same content could have come from more than one place (identical copies, say), OneFolder prefers the one at the same path under a renamed folder (the same name in the same subfolder), then the one with the same modification time; if that still does not settle it, it does not guess: the file is uploaded and the old copy stays.
+When you move or rename a file or a folder on your computer, a plain copy would upload it again under its new name and, since one-way never deletes, leave the old copy on the destination too. OneFolder looks for these during the preview: a new file whose exact content is already on the destination under a name your computer no longer has. It compares sizes first, then the files' QuickXorHash (OneDrive keeps it with every file, so asking costs nothing; on a drive OneFolder reads only the few files that could match; meanwhile the screen says `checking 12 possible moves`). Names are compared ignoring case wherever either side ignores it (OneDrive always, and every folder on a Mac), so there renaming `Report.pdf` to `report.pdf` is not a move and nothing is uploaded for it; on Linux, between two folders that tell case apart, it is a move (see [Linux and WSL](#linux-and-wsl)). A file that was moved and also changed is simply new and is uploaded, and so is an empty file. Where the same content could have come from more than one place (identical copies, say), OneFolder prefers the one at the same path under a renamed folder (the same name in the same subfolder), then the one with the same modification time; if that still does not settle it, it does not guess: the file is uploaded and the old copy stays.
 
 The preview then has a Moved row and a list of what moved, with a whole folder on one line:
 
@@ -298,13 +299,13 @@ The moves run before the copy, a few at a time (any new folders they need are ma
 
 #### The folder-deletion prompt
 
-When a whole folder has disappeared from your Mac since the last two-way run, OneFolder asks before letting bisync delete it on the destination:
+When a whole folder has disappeared from your computer since the last two-way run, OneFolder asks before letting bisync delete it on the destination:
 
 - **Delete it on the destination too.** The folder and its files are removed there, including the hidden and system files inside it (such as the `.DS_Store` Finder writes into folders it opens), which the sync itself leaves alone. If the folder still holds a file the sync handles, such as a conflict copy, it is left there and the run says so.
 - **Keep it on the destination and stop syncing it.** The folder is put on hold: it stays on the destination, and later runs leave it out. Holds are shown by `onefolder status` and in the job's edit form.
-- **Restore it to this Mac.** OneFolder copies the folder back from the destination before the run, so it is on both sides again.
+- **Restore it to this Mac** (this computer, on Linux). OneFolder copies the folder back from the destination before the run, so it is on both sides again.
 
-Keep is highlighted by default. If more than 20 folders were deleted in one run, the prompt shows a list with one answer for all and a per-folder override. When the plan also adds the same number of new files on your Mac, the prompt says the folder may have been renamed; deleting is then the right answer, since the renamed copy is uploaded.
+Keep is highlighted by default. If more than 20 folders were deleted in one run, the prompt shows a list with one answer for all and a per-folder override. When the plan also adds the same number of new files on your computer, the prompt says the folder may have been renamed; deleting is then the right answer, since the renamed copy is uploaded.
 
 To start syncing a held folder again:
 
@@ -312,7 +313,7 @@ To start syncing a held folder again:
 onefolder jobs release documents "Old projects/2019"
 ```
 
-The folder then looks new on the destination, so the next run copies it back to your Mac.
+The folder then looks new on the destination, so the next run copies it back to your computer.
 
 `--folder-deletes ask|delete|keep|restore` answers the prompt in advance. The default is `ask` on a terminal and `keep` otherwise, so a run without a terminal never deletes a folder on the destination. `--yes` does not answer this prompt.
 
@@ -337,7 +338,7 @@ If a file changes in the short time between OneFolder's plan and the real run, b
 | `--yes`, `-y` | Skip the preview confirmation. It never answers the folder prompt, and a two-way run deleting more than half a side still needs a terminal. |
 | `--json` | Non-interactive: no prompts and no screens. Commands print one JSON document; `run --json` prints newline-delimited JSON events, one per line. While a preview or a two-way plan runs it sends a `progress` event at most once a second: `step`, `elapsed` (seconds), `checked`, `listed`, `to_copy` (`files` and `bytes`), `destination_listed`, `destination_done` and `still_listing`. The `preview` and `plan` events carry `copy_hidden` and `effective_excludes`, every pattern in force. |
 | `--folder-deletes` | Answer the folder prompt: `ask`, `delete`, `keep` or `restore`. |
-| `--moves` | One-way: what to do with files moved on your Mac whose old copy is on the destination: `ask` (without a terminal: upload them again), `move` (move them there, the default with `--yes`) or `copy` (upload them again). With `--json`, the `preview` event carries `moves` (`count`, `bytes`, `choice`: `undecided`, `move` or `copy`, and the first 10 `pairs` and `groups`), a `moves` event says what was decided and how (`answer`: `move` or `copy`; `by`: `asked`, `flag`, `default` or `not-asked`; `count`, `bytes`), `progress` carries `checking_moves` while possible moves are checked and `moved` (`files` and `of`) during the `moving` step, and the summary carries `moved` (`files` and `bytes`) only when something moved. |
+| `--moves` | One-way: what to do with files moved on your computer whose old copy is on the destination: `ask` (without a terminal: upload them again), `move` (move them there, the default with `--yes`) or `copy` (upload them again). With `--json`, the `preview` event carries `moves` (`count`, `bytes`, `choice`: `undecided`, `move` or `copy`, and the first 10 `pairs` and `groups`), a `moves` event says what was decided and how (`answer`: `move` or `copy`; `by`: `asked`, `flag`, `default` or `not-asked`; `count`, `bytes`), `progress` carries `checking_moves` while possible moves are checked and `moved` (`files` and `of`) during the `moving` step, and the summary carries `moved` (`files` and `bytes`) only when something moved. |
 | `--dest ID` | Run only this destination. |
 | `--resync` | Merge both sides again before running (two-way). |
 | `--copy-hidden yes\|no` | On `jobs add` and `jobs edit`: copy hidden files and folders, or leave them out (the default). |
@@ -358,11 +359,11 @@ Ctrl-C during a run asks rclone to stop; a second Ctrl-C stops it at once. The r
 
 ### External drives
 
-When a drive is unplugged, `/Volumes/Backup` is either missing or an empty folder on your startup disk. A two-way sync would read that as "everything was deleted", and even a one-way copy would fill your startup disk. So before every run OneFolder proves it is looking at the recorded drive:
+When a drive is unplugged, `/Volumes/Backup` (or `/media/<you>/Backup` on Linux) is either missing or an empty folder on your startup disk. A two-way sync would read that as "everything was deleted", and even a one-way copy would fill your startup disk. So before every run OneFolder proves it is looking at the recorded drive:
 
 1. the folder exists;
 2. it is on the recorded mount point, not on the startup disk;
-3. `diskutil` reports the recorded volume UUID (or, for drives without one, the recorded device and name);
+3. the drive reports the recorded volume UUID (or, for drives without one, the recorded partition UUID, or device and name): `diskutil` on a Mac, `lsblk` on Linux, Windows itself under WSL;
 4. the drive is writable, for a destination.
 
 A source folder on an external drive gets the same check. If any step fails, that destination does not run:
@@ -375,6 +376,16 @@ A source folder on an external drive gets the same check. If any step fails, tha
 ```
 
 `onefolder doctor` and `onefolder status` show each drive as mounted, not mounted, wrong volume, read-only or mounted somewhere else.
+
+### Linux and WSL
+
+OneFolder works the same on Linux and under WSL as on a Mac, with these differences.
+
+- **Which folders are on a drive.** Any file system mounted on its own is a drive that OneFolder records and checks before every run, wherever it is mounted: `/media/<you>/<label>` (where most desktops mount a USB drive), `/run/media/<you>/<label>` (Fedora, Arch), `/mnt`, `/data`, `/srv/backup` or anywhere else. Only the system disk is not checked: `/` itself, the standard system mount points (`/boot`, `/boot/efi`, `/efi`, `/usr`, `/usr/local`, `/var`, `/var/log`, `/var/tmp`, `/home`, `/tmp`, `/opt`, `/root`, `/nix`, `/snap`) and file systems with no disk behind them (`tmpfs`, `overlay`, snaps' `squashfs`). A folder there needs no drive, just as a folder on a Mac's own disk, and setup says which mount it is on (`on /home, part of the system disk`). A folder under `/media`, `/run/media` or `/mnt` that is not on a mounted drive is refused at setup with "is a folder on the system disk, not on a mounted drive". Drives are identified with `lsblk` (from util-linux), which needs no root: the file system UUID, else the partition UUID, else the device and label (a drive with no label is named after its mount point). A btrfs subvolume, or a bind mount of a drive's folder, is recorded as that folder of the drive, so another subvolume mounted in its place is the wrong drive. Network shares (`cifs`, `nfs`, `sshfs` and the like) and other file systems with no block device (ZFS datasets, FUSE) get the weak device and name check. If a drive is mounted somewhere other than where it was recorded (`/media/<you>/Backup1`, say), the run says where and how to point the job at it.
+- **Windows drives under WSL.** WSL mounts the drives that are there when it starts at `/mnt/c`, `/mnt/d` and so on. `/mnt/c` is the Windows system drive: a destination under `/mnt/c/Users/...` is allowed and simply not checked, like a folder on the Mac's own disk. Any other drive letter is a drive, identified by its Windows volume GUID and label, which OneFolder asks Windows for through PowerShell (`powershell.exe`, which WSL puts on your `PATH`; it needs WSL's Windows interop, on unless `/etc/wsl.conf` turns it off, and the run says so if it is off). PowerShell can be slow to start, so a drive check under WSL may take up to 30 seconds before it gives up. A drive plugged in after WSL started is not mounted on its own; the "not mounted" message says how to mount it at its recorded place, such as `sudo mount -t drvfs E: /mnt/e`, with the letter Windows gives the drive now if that changed. A drive mounted at another folder (`sudo mount -t drvfs E: /mnt/x`) is reported as mounted somewhere else.
+- **Case in names.** On a Mac and on OneDrive, `Report.pdf` and `report.pdf` are the same file. Most Linux file systems (ext2, ext3, ext4, btrfs, xfs, f2fs, jfs, zfs, tmpfs) tell them apart; OneFolder treats every other file system as ignoring case: FAT, exFAT, NTFS and HFS+ drives, the Windows drives under WSL, network shares (a CIFS or NFS server may ignore case) and anything it does not know, as well as an ext4 or f2fs folder made case-insensitive with `chattr +F`. When neither the source nor the destination ignores case, a rename that only changes case is a move like any other, and the moved-files check offers it; where either side ignores case, it is not a move, because moving a file onto itself there would delete it. rclone itself compares names with case on Linux, which OneFolder leaves as it is.
+- **Signing in.** `accounts add` and `accounts reconnect` let rclone open your browser, with `xdg-open` on a Linux desktop. Under WSL, install `wslu` so rclone can open the Windows browser with `wslview`, or copy the link rclone prints into a browser yourself. On a machine with no browser at all (a server over SSH), OneFolder does not support `rclone authorize "onedrive"` on another machine; instead add the account on a machine with a browser, copy its `~/.config/rclone/rclone.conf` across (it holds the `onefolder-<label>` remotes and their tokens), and add the same `[[accounts]]` entries to `~/.config/onefolder/config.toml` there.
+- **Words.** Messages say "this computer" where a Mac says "this Mac", and the two-way counts say `2 here` for `2 to Mac`.
 
 ### Status and doctor
 
@@ -397,7 +408,9 @@ A run log can go when it is older than 90 days, or beyond the newest 50 for its 
 
 An `.excludes` file left behind without its log is removed too.
 
-### Scheduling with launchd
+### Running on a schedule
+
+#### macOS: launchd
 
 To run a job every night, save a LaunchAgent as `~/Library/LaunchAgents/local.onefolder.documents.plist`. Replace `YOU` with your user name, and `/opt/homebrew/bin/onefolder` with what `which onefolder` prints on your Mac (launchd needs the full path).
 
@@ -459,6 +472,46 @@ Things to know about unattended runs:
 - If the previous run of the job is still going, the scheduled run refuses with exit 2 rather than running twice.
 - An unplugged drive makes that destination fail with the message above; the other destinations still run.
 
+#### Linux: a systemd user timer
+
+Save the service as `~/.config/systemd/user/onefolder-documents.service`, with the full path `which onefolder` prints:
+
+```ini
+[Unit]
+Description=OneFolder: run documents
+
+[Service]
+Type=oneshot
+ExecStart=%h/.cargo/bin/onefolder run documents --yes --json
+Environment=PATH=%h/.cargo/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+```
+
+and the timer as `~/.config/systemd/user/onefolder-documents.timer`:
+
+```ini
+[Unit]
+Description=Run OneFolder's documents job every night
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+Start it with `systemctl --user daemon-reload && systemctl --user enable --now onefolder-documents.timer`; `systemctl --user list-timers` shows when it runs next, and `journalctl --user -u onefolder-documents` shows what each run printed (newline-delimited JSON, as above). A user timer runs while you are logged in; `loginctl enable-linger $USER` lets it run when you are not. The notes above about unattended runs apply as they are.
+
+#### WSL: Windows Task Scheduler
+
+WSL has no scheduler of its own running while it is closed, so let Windows start the run. In Task Scheduler, create a task with a daily trigger whose action starts `wsl.exe` with the arguments `-d Ubuntu -- /home/you/.cargo/bin/onefolder run documents --yes` (the distribution's name as `wsl -l` shows it, and the full path `which onefolder` prints inside WSL: `wsl.exe` runs the command without a login shell, so `~/.cargo/bin` is not on its `PATH`). The same as a single command, from PowerShell or `cmd`:
+
+```bat
+schtasks /Create /TN "OneFolder documents" /SC DAILY /ST 02:30 /TR "wsl.exe -d Ubuntu -- /home/you/.cargo/bin/onefolder run documents --yes"
+```
+
+rclone must be on WSL's default `PATH` too; its installer from rclone.org puts it in `/usr/bin`, which is. A drive the job writes to must be mounted in WSL when the task runs.
+
 ## Reference
 
 ### Where files live
@@ -478,7 +531,7 @@ Things to know about unattended runs:
 
 Start with `onefolder doctor`. It checks rclone, every account, every job's source and destinations, and the data files, and says what to run for each problem. It also notes when Homebrew has a newer rclone than the one installed.
 
-**Drive not mounted.** Plug the drive in and run again. If the drive is plugged in but macOS mounted it somewhere else (for example `/Volumes/Backup 1`, because a folder was left at `/Volumes/Backup`), OneFolder says "mounted somewhere else" and where. Either eject the drive, remove the stray folder and plug it in again, or point the destination at the new place with `onefolder jobs edit <job>`, which records the drive there. After reformatting or replacing a drive, `onefolder jobs edit <job> --rerecord <destination-id>` records it again.
+**Drive not mounted.** Plug the drive in and run again (under WSL, mount it too, as the message says). If the drive is plugged in but mounted somewhere else (for example `/Volumes/Backup 1` on a Mac, because a folder was left at `/Volumes/Backup`, or `/media/<you>/Backup1` on Linux), OneFolder says "mounted somewhere else" and where. Either eject the drive, remove the stray folder and plug it in again, or point the destination at the new place with `onefolder jobs edit <job>`, which records the drive there. After reformatting or replacing a drive, `onefolder jobs edit <job> --rerecord <destination-id>` records it again.
 
 **Token expired.** OneDrive sign-ins expire after a while. `onefolder accounts test` reports it, and the fix is:
 
@@ -498,7 +551,7 @@ A merge copies files missing on either side and lets the local copy win where th
 
 **Names too long.** bisync names its working files after both folder paths, and together they must fit in 255 bytes. The job form warns before saving; if a run reports it, use a shorter source or destination path.
 
-**A stale lock.** If OneFolder or rclone was killed, a lock may be left behind. A run lock at `runs/<job>.lock` whose process is gone (or is no longer OneFolder, or dates from before the Mac last started) is stale; the next run removes it and says so. For bisync's lock in the working directory, OneFolder asks on a terminal whether to remove it; `--yes` removes it without asking. `status` and `doctor` show a run in progress or a stale lock.
+**A stale lock.** If OneFolder or rclone was killed, a lock may be left behind. A run lock at `runs/<job>.lock` whose process is gone (or is no longer OneFolder, or dates from before the computer last started) is stale; the next run removes it and says so. For bisync's lock in the working directory, OneFolder asks on a terminal whether to remove it; `--yes` removes it without asking. `status` and `doctor` show a run in progress or a stale lock.
 
 **A hanging network drive.** If a network volume stops answering, the drive check before a run reports that it "did not answer in 10 seconds, is a network drive hanging?" rather than waiting forever, and the jobs list and menu show the drive as "not answering" after 2 seconds. Reconnect or eject the share and run again.
 
@@ -520,10 +573,10 @@ onefolder completion fish > ~/.config/fish/completions/onefolder.fish
 
 ### Uninstall
 
-1. Unload and delete any LaunchAgents you made: `launchctl bootout gui/$(id -u)/local.onefolder.documents`, then remove the file from `~/Library/LaunchAgents`.
+1. Unload and delete any LaunchAgents you made: `launchctl bootout gui/$(id -u)/local.onefolder.documents`, then remove the file from `~/Library/LaunchAgents`. On Linux, stop any timers (`systemctl --user disable --now onefolder-documents.timer`) and remove their files from `~/.config/systemd/user`; under WSL, delete any task you made in Task Scheduler.
 2. Remove the accounts' rclone remotes, either with `onefolder accounts remove <label>` for each account (add `--yes` when running it from a script or with `--json`), or with `rclone config delete onefolder-<label>`.
-3. Remove the binary: `brew uninstall onefolder` (and `brew untap boraoku/apps`), or `cargo uninstall onefolder` for a source install.
-4. Remove the config and data: `rm -rf ~/.config/onefolder ~/.local/share/onefolder`. This deletes the run logs and the two-way sync state; your synced files are not touched.
+3. Remove the binary: `brew uninstall onefolder` (and `brew untap boraoku/apps`), `rm ~/.cargo/bin/onefolder` for the shell installer, or `cargo uninstall onefolder` for a source install.
+4. Remove the config and data: `rm -rf ~/.config/onefolder ~/.local/share/onefolder`. The folders are the same on macOS, Linux and WSL. This deletes the run logs and the two-way sync state; your synced files are not touched.
 
 ### Releasing
 
@@ -531,9 +584,9 @@ For maintainers. The repository is `boraoku/onefolder` and the Homebrew tap is `
 
 To cut a release:
 
-1. `just release-notes 0.1.0` renames the [CHANGELOG](CHANGELOG.md)'s `## Unreleased` section to `## 0.1.0 - <date>`; dist uses that section as the release notes. Set the same version in `Cargo.toml`.
-2. `just release-check` runs `dist plan`, builds both macOS targets and the universal binary, and runs it.
-3. Commit, then `git tag v0.1.0 && git push origin v0.1.0`.
+1. `just release-notes 0.2.0` renames the [CHANGELOG](CHANGELOG.md)'s `## Unreleased` section to `## 0.2.0 - <date>`; dist uses that section as the release notes. Set the same version in `Cargo.toml`.
+2. `just release-check` (on a Mac) runs `dist plan`, builds both macOS targets and the universal binary, and runs it. The two Linux targets are built by the release workflow on GitHub's Linux runners.
+3. Commit, then `git tag v0.2.0 && git push origin v0.2.0`.
 
 The tag starts the release workflow, which needs the repository secret `HOMEBREW_TAP_TOKEN` (write access to `boraoku/homebrew-apps`) to push the formula; without it the release is still published and `onefolder.rb` is among its assets, to be copied into the tap's `Formula/` by hand, as was done for 0.1.0. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#releases) for what it does.
 

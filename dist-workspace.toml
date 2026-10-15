@@ -13,8 +13,9 @@ ci = "github"
 installers = ["shell", "homebrew"]
 # The Homebrew tap the formula is pushed to.
 tap = "boraoku/homebrew-apps"
-# Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+# Target platforms to build apps for (Rust target-triple syntax): both
+# Macs, and Linux on Intel and ARM (glibc), which also serves WSL
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-unknown-linux-gnu"]
 # Publish jobs to run in CI: the formula to the tap, and the universal
 # macOS binary made from the two builds (.github/workflows/publish-universal.yml)
 publish-jobs = ["homebrew", "./publish-universal"]

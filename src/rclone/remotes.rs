@@ -385,12 +385,9 @@ pub async fn reconnect(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     fn fixture(name: &str) -> String {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/rclone")
-            .join(name);
+        let path = crate::rclone::fixture_path(name);
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
     }
 

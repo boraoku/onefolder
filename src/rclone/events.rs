@@ -312,15 +312,23 @@ pub fn decode_all(text: &str) -> Vec<Event> {
         .collect()
 }
 
+/// True when `just fixtures` has just recorded the fixtures on Linux.
+/// rclone's local backend says different things there (a plain copy where
+/// macOS clones the file server-side, a folder's size, the error for an
+/// unreadable file), so those recordings are checked against their own
+/// snapshots, `events_<name>@linux.snap`. The committed fixtures are macOS
+/// recordings, checked against the plain snapshots on every platform.
+#[cfg(test)]
+pub(crate) fn fixtures_recorded_on_linux() -> bool {
+    std::env::var("ONEFOLDER_FIXTURES_RECORDED_ON").is_ok_and(|v| v == "linux")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     pub fn fixture(name: &str) -> String {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/rclone")
-            .join(name);
+        let path = crate::rclone::fixture_path(name);
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
     }
 
@@ -530,10 +538,13 @@ mod tests {
             normalise(events, progress)
         };
         let events = redact_listed(events);
-        insta::with_settings!({
-            snapshot_path => concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots"),
-            prepend_module_to_snapshot => false,
-        }, {
+        let mut settings = insta::Settings::clone_current();
+        settings.set_snapshot_path(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots"));
+        settings.set_prepend_module_to_snapshot(false);
+        if fixtures_recorded_on_linux() {
+            settings.set_snapshot_suffix("linux");
+        }
+        settings.bind(|| {
             insta::assert_json_snapshot!(format!("events_{name}"), events);
         });
     }

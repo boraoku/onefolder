@@ -1,0 +1,15 @@
+62 67 8:32 / / rw,relatime - ext4 /dev/sdc rw,discard,errors=remount-ro,data=ordered
+63 62 0:20 / /mnt/wsl rw,relatime shared:1 - tmpfs none rw
+64 62 0:21 /init /init ro,relatime - 9p tools ro,dirsync,aname=tools;fmask=022,loose,access=client,trans=fd,rfd=6,wfd=6
+65 62 0:5 / /dev rw,nosuid,relatime - devtmpfs none rw,size=8155712k,nr_inodes=2038928,mode=755
+66 62 0:12 / /sys rw,nosuid,nodev,noexec,noatime - sysfs sysfs rw
+67 62 0:13 / /proc rw,nosuid,nodev,noexec,noatime - proc proc rw
+68 65 0:22 / /dev/pts rw,nosuid,noexec,noatime - devpts devpts rw,gid=5,mode=620,ptmxmode=000
+69 67 0:23 / /proc/sys/fs/binfmt_misc rw,relatime - binfmt_misc binfmt_misc rw
+70 62 0:24 / /usr/lib/wsl/drivers ro,nosuid,nodev,noatime - 9p drivers ro,dirsync,aname=drivers;fmask=222;dmask=222,mmap,access=client,msize=65536,trans=fd,rfd=7,wfd=7
+71 62 0:25 / /usr/lib/wsl/lib ro,nosuid,nodev,noatime - overlay none rw,lowerdir=/gpu_lib_packaged:/gpu_lib_inbox,upperdir=/gpu_lib/rw/upper,workdir=/gpu_lib/rw/work
+72 62 0:26 / /mnt/wslg rw,relatime - tmpfs none rw
+73 72 8:32 /distro /mnt/wslg/distro ro,relatime shared:2 - ext4 /dev/sdc rw,discard,errors=remount-ro,data=ordered
+74 62 0:27 / /mnt/c rw,noatime - 9p C:\134 rw,dirsync,aname=drvfs;path=C:\;uid=1000;gid=1000;symlinkroot=/mnt/,mmap,access=client,msize=65536,trans=fd,rfd=5,wfd=5
+75 62 0:28 / /mnt/d rw,noatime - 9p D:\134 rw,dirsync,aname=drvfs;path=D:\;uid=1000;gid=1000;symlinkroot=/mnt/,mmap,access=client,msize=65536,trans=fd,rfd=5,wfd=5
+90 62 0:45 / /mnt/e rw,relatime - 9p E: rw,dirsync,aname=drvfs;path=E:;uid=0;gid=0;symlinkroot=/mnt/,mmap,access=client,msize=65536,trans=fd,rfd=5,wfd=5

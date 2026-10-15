@@ -97,14 +97,17 @@ fn counts(r: &RunRecord, kind: &str) -> String {
     };
     let d = theme::DOT;
     let changes = match r.mode {
-        Mode::TwoWay => format!(
-            "Added {} to {remote}, {} to Mac {d} Updated {} {d} Deleted {} on {remote}, {} on Mac",
-            r.added.remote,
-            r.added.local,
-            r.updated.total(),
-            r.deleted.remote,
-            r.deleted.local
-        ),
+        Mode::TwoWay => {
+            let w = crate::platform::words();
+            format!(
+                "Added {} to {remote}, {} {d} Updated {} {d} Deleted {} on {remote}, {}",
+                r.added.remote,
+                w.to_local(r.added.local),
+                r.updated.total(),
+                r.deleted.remote,
+                w.on_local(r.deleted.local)
+            )
+        }
         Mode::OneWay => format!(
             "Added {} {d} Updated {}",
             r.added.total(),
@@ -832,6 +835,21 @@ mod tests {
             assert!(starts.windows(2).all(|w| w[0] == w[1]), "{text}");
             snapshot(&format!("status_cjk_{width}"), text);
         }
+    }
+
+    /// On Linux and WSL the counts on this side say "here".
+    #[test]
+    fn linux_counts_say_here() {
+        let _linux = crate::platform::testing::describe(crate::platform::Os::Linux);
+        let text = render_text(&sample(), NOW, false, None, &tilde);
+        let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(
+            flat.contains(
+                "Added 14 to OneDrive, 2 here · Updated 3 · Deleted 0 on OneDrive, 1 here"
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("Mac"), "{text}");
     }
 
     #[test]

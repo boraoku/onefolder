@@ -149,13 +149,15 @@ async fn version(json: bool) -> Result<ExitCode> {
         Ok(r) => format!("rclone {} at {}", r.version, r.path.display()),
         Err(detect::DetectError::NotFound) => "rclone not found on PATH".to_string(),
         Err(detect::DetectError::TooOld { path, found }) => format!(
-            "rclone {found} at {}, older than {} · update it with: brew upgrade rclone",
+            "rclone {found} at {}, older than {} · {}",
             path.display(),
-            detect::MINIMUM.short()
+            detect::MINIMUM.short(),
+            crate::platform::rclone_advice(crate::platform::RcloneAction::Upgrade)
         ),
         Err(detect::DetectError::Unreadable { path, .. }) => format!(
-            "rclone at {}, version unreadable · reinstall it with: brew reinstall rclone",
-            path.display()
+            "rclone at {}, version unreadable · {}",
+            path.display(),
+            crate::platform::rclone_advice(crate::platform::RcloneAction::Reinstall)
         ),
     };
     write_stdout(format!("onefolder {version} (commit {commit})\n{rclone}\n").as_bytes())?;

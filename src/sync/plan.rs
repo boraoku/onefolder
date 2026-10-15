@@ -543,9 +543,7 @@ mod tests {
     use crate::rclone::events;
 
     fn fixture(name: &str) -> String {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/rclone")
-            .join(name);
+        let path = crate::rclone::fixture_path(name);
         std::fs::read_to_string(path).unwrap()
     }
 

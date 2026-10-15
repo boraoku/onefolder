@@ -136,6 +136,11 @@ pub enum Destination {
         /// check then compares device and name, a weaker check.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         volume_device: Option<String>,
+        /// Linux: the folder of the file system mounted at `mount_point`
+        /// (a btrfs subvolume such as `/@data`), recorded only when it is
+        /// not the whole file system.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        volume_root: Option<String>,
     },
 }
 
@@ -161,6 +166,7 @@ impl Destination {
             mount_point: None,
             volume_partition_uuid: None,
             volume_device: None,
+            volume_root: None,
         }
     }
 
@@ -175,6 +181,7 @@ impl Destination {
                 mount_point,
                 volume_partition_uuid,
                 volume_device,
+                volume_root,
                 ..
             } => Identity::recorded(
                 path,
@@ -184,6 +191,7 @@ impl Destination {
                     volume_uuid: volume_uuid.as_deref(),
                     partition_uuid: volume_partition_uuid.as_deref(),
                     device: volume_device.as_deref(),
+                    mount_root: volume_root.as_deref(),
                 },
             ),
         }
@@ -198,9 +206,11 @@ impl Destination {
             mount_point,
             volume_partition_uuid,
             volume_device,
+            volume_root,
             ..
         } = self
         {
+            *volume_root = identity.and_then(|i| i.mount_root.clone());
             *volume_uuid = identity.and_then(|i| i.volume_uuid.clone());
             *volume_name = identity.map(|i| i.volume_name.clone());
             *mount_point = identity.map(|i| i.mount_point.clone());
@@ -282,6 +292,8 @@ pub struct Job {
     pub source_volume_partition_uuid: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_volume_device: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_volume_root: Option<String>,
     #[serde(default)]
     pub destinations: Vec<Destination>,
 }
@@ -312,6 +324,7 @@ impl Job {
                 volume_uuid: self.source_volume_uuid.as_deref(),
                 partition_uuid: self.source_volume_partition_uuid.as_deref(),
                 device: self.source_volume_device.as_deref(),
+                mount_root: self.source_volume_root.as_deref(),
             },
         )
     }
@@ -323,6 +336,7 @@ impl Job {
         self.source_mount_point = identity.map(|i| i.mount_point.clone());
         self.source_volume_partition_uuid = identity.and_then(|i| i.partition_uuid.clone());
         self.source_volume_device = identity.and_then(|i| i.device.clone());
+        self.source_volume_root = identity.and_then(|i| i.mount_root.clone());
     }
 }
 
@@ -532,6 +546,7 @@ mod tests {
             volume_uuid: Some("A1B2C3D4-0000-4E5F-8A9B-000000000001".into()),
             partition_uuid: None,
             device: None,
+            mount_root: None,
         };
         let weak = Identity {
             mount_point: "/Volumes/BACKUP".into(),
@@ -539,6 +554,7 @@ mod tests {
             volume_uuid: None,
             partition_uuid: None,
             device: Some("/dev/disk4s1".into()),
+            mount_root: None,
         };
         let partition = Identity {
             mount_point: "/Volumes/STICK".into(),
@@ -546,6 +562,7 @@ mod tests {
             volume_uuid: None,
             partition_uuid: Some("7C3457EF-0000-11AA-AA11-00306543ECAC".into()),
             device: None,
+            mount_root: None,
         };
         for id in [strong, weak, partition] {
             let mut d = Destination::local("d-0001".into(), format!("{}/Docs", id.mount_point));

@@ -1,0 +1,16 @@
+2 2 0:2 / / rw,noatime - wslfs rootfs rw
+3 2 0:3 / /dev rw,noatime shared:1 - tmpfs none rw,mode=755
+4 2 0:4 / /sys rw,nosuid,nodev,noexec,noatime shared:2 - sysfs sysfs rw
+5 2 0:5 / /proc rw,nosuid,nodev,noexec,noatime shared:3 - proc proc rw
+6 3 0:6 / /dev/pts rw,nosuid,noexec,noatime shared:4 - devpts devpts rw,gid=5,mode=620
+7 2 0:7 / /run rw,nosuid,nodev shared:5 - tmpfs none rw,mode=755
+8 7 0:8 / /run/lock rw,nosuid,nodev,noexec,noatime shared:6 - tmpfs none rw
+9 7 0:9 / /run/shm rw,nosuid,nodev,noatime shared:7 - tmpfs none rw
+10 3 0:9 / /dev/shm rw,nosuid,nodev,noatime shared:7 - tmpfs none rw
+11 7 0:10 / /run/user rw,nosuid,nodev,noexec,noatime shared:8 - tmpfs none rw,mode=755
+12 5 0:11 / /proc/sys/fs/binfmt_misc rw,relatime shared:9 - binfmt_misc binfmt_misc rw
+13 4 0:12 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime shared:10 - tmpfs tmpfs rw,mode=755
+14 13 0:13 / /sys/fs/cgroup/devices rw,nosuid,nodev,noexec,relatime shared:11 - cgroup cgroup rw,devices
+15 2 0:14 / /mnt/winshare rw,relatime - drvfs \134\134Mac\134winshare rw,case=off
+16 2 0:15 / /mnt/c rw,noatime - drvfs C:\134 rw,uid=0,gid=0,case=off
+17 2 0:16 / /mnt/e rw,noatime - drvfs E:\134 rw,uid=0,gid=0,case=off

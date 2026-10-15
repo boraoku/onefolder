@@ -18,7 +18,6 @@ use thiserror::Error;
 use toml_edit::DocumentMut;
 
 use crate::model::{self, Account, Destination, Job};
-use crate::volume;
 
 pub use paths::{absolute, expand_tilde, tilde, Paths};
 
@@ -310,17 +309,18 @@ pub fn validate_job(job: &Job, accounts: &[Account]) -> Vec<String> {
             "job \"{name}\" has source \"{}\", which is not an absolute path",
             job.source
         ));
-    } else if volume::is_under_volumes(source)
-        && !identity_recorded(
+    } else if let Some(drive) = crate::platform::drive_path(source).filter(|_| {
+        !identity_recorded(
             job.source_volume_uuid.as_deref(),
             job.source_volume_partition_uuid.as_deref(),
             job.source_volume_name.as_deref(),
             job.source_volume_device.as_deref(),
         )
-    {
+    }) {
         problems.push(format!(
-            "job \"{name}\" has its source under /Volumes but no source_volume_uuid \
-             (or source_volume_partition_uuid, or source_volume_device and source_volume_name) recorded"
+            "job \"{name}\" has its source under {} but no source_volume_uuid \
+             (or source_volume_partition_uuid, or source_volume_device and source_volume_name) recorded",
+            drive.root
         ));
     }
     if job.excludes.iter().any(|e| e.trim().is_empty()) {
@@ -377,17 +377,17 @@ pub fn validate_job(job: &Job, accounts: &[Account]) -> Vec<String> {
                     ));
                     continue;
                 }
-                if volume::is_under_volumes(p)
-                    && !identity_recorded(
-                        volume_uuid.as_deref(),
-                        volume_partition_uuid.as_deref(),
-                        volume_name.as_deref(),
-                        volume_device.as_deref(),
-                    )
-                {
+                let unrecorded = !identity_recorded(
+                    volume_uuid.as_deref(),
+                    volume_partition_uuid.as_deref(),
+                    volume_name.as_deref(),
+                    volume_device.as_deref(),
+                );
+                if let Some(drive) = crate::platform::drive_path(p).filter(|_| unrecorded) {
                     problems.push(format!(
-                        "job \"{name}\" destination {id} is under /Volumes but has no volume_uuid \
-                         (or volume_partition_uuid, or volume_device and volume_name) recorded"
+                        "job \"{name}\" destination {id} is under {} but has no volume_uuid \
+                         (or volume_partition_uuid, or volume_device and volume_name) recorded",
+                        drive.root
                     ));
                 }
                 if source.is_absolute() {

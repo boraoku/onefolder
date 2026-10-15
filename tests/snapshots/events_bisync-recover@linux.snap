@@ -1,0 +1,100 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set."
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType#\": #,\n\t\"HashType#\": #,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Synching Path# \"/fixture/bd/src/\" with Path# \"/fixture/bd/dst/\""
+  },
+  {
+    "event": "phase",
+    "phase": "listing"
+  },
+  {
+    "event": "phase",
+    "phase": "checking"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "new",
+    "path": "big2.bin"
+  },
+  {
+    "event": "changes",
+    "side": "path1",
+    "changes": 1,
+    "new": 1,
+    "modified": 0,
+    "deleted": 0
+  },
+  {
+    "event": "phase",
+    "phase": "checking"
+  },
+  {
+    "event": "phase",
+    "phase": "applying"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "copy",
+    "path": "/fixture/bd/dst/big2.bin"
+  },
+  {
+    "event": "applying",
+    "to": "path2"
+  },
+  {
+    "event": "transferred",
+    "kind": "new",
+    "object": "big2.bin",
+    "size": 67108864,
+    "message": "Copied (new)"
+  },
+  {
+    "event": "phase",
+    "phase": "updating"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Validating listings for Path# \"/fixture/bd/src/\" vs Path# \"/fixture/bd/dst/\""
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisync successful"
+  },
+  {
+    "event": "stats",
+    "bytes": 67108864,
+    "totalBytes": 67108864,
+    "transfers": 1,
+    "totalTransfers": 1,
+    "checks": 11,
+    "totalChecks": 11,
+    "listed": "[listed]",
+    "errors": 0,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": null,
+    "transferring": []
+  }
+]

@@ -1,0 +1,15 @@
+{
+   "blockdevices": [
+      {
+         "path": "/dev/loop1p1",
+         "uuid": null,
+         "partuuid": "2085294b-a85d-4187-b78f-0874aac3538d",
+         "label": "My Passport",
+         "fstype": "exfat",
+         "ro": false,
+         "mountpoints": [
+             "/media/bora/My Passport"
+         ]
+      }
+   ]
+}

@@ -245,7 +245,7 @@ impl<W: Write> Reporter for PlainReporter<W> {
     fn file(&mut self, file: &FileDone) {
         let side = match file.side {
             Where::Destination => place(self.kind),
-            Where::Local => "this Mac",
+            Where::Local => crate::platform::words().this_computer,
         };
         let what = match (file.change, file.size) {
             (Change::Deleted, _) => format!("deleted on {side}"),
@@ -254,7 +254,7 @@ impl<W: Write> Reporter for PlainReporter<W> {
             (Change::Updated, Some(b)) => format!("{} updated", format_bytes(b)),
         };
         let what = if file.side == Where::Local && file.change != Change::Deleted {
-            format!("{what} on this Mac")
+            format!("{what} on {}", crate::platform::words().this_computer)
         } else {
             what
         };
@@ -381,9 +381,10 @@ impl<W: Write> Reporter for PlainReporter<W> {
         }
         let place = place(kind);
         let mut text = format!(
-            "\n{} {} folders deleted locally\n\n  Not on your Mac any more. What should happen to them on {place}?\n\n",
+            "\n{} {} folders deleted locally\n\n  Not on {} any more. What should happen to them on {place}?\n\n",
             self.p(theme::CURSOR, Tone::Accent),
-            folders.len()
+            folders.len(),
+            crate::platform::words().your_computer
         );
         for (i, f) in folders.iter().enumerate() {
             text.push_str(&format!(

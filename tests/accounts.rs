@@ -560,7 +560,7 @@ fn doctor_checks_the_accounts() {
 }
 
 /// The sign-in flows, under a pseudo-terminal with a fake rclone.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod sign_in {
     use super::*;
     use std::io::Write;
@@ -624,10 +624,23 @@ exec "{real}" "$@"
         ) -> (i32, String) {
             let bin = assert_cmd::cargo::cargo_bin!("onefolder");
             let mut cmd = std::process::Command::new("/usr/bin/script");
-            cmd.args(["-q", "/dev/null"])
-                .arg(bin)
-                .args(args)
-                .env("ONEFOLDER_CONFIG_DIR", self.home.path("config"))
+            if cfg!(target_os = "macos") {
+                cmd.args(["-q", "/dev/null"]).arg(bin).args(args);
+            } else {
+                // util-linux's script(1) takes one command line, run by
+                // $SHELL (which `exec` replaces, so Ctrl-C reaches
+                // OneFolder alone, as on macOS), and passes its exit status
+                // on with -e.
+                let words = std::iter::once(bin.display().to_string())
+                    .chain(args.iter().map(|a| a.to_string()))
+                    .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let line = format!("exec {words}");
+                cmd.args(["-q", "-e", "-c", &line, "/dev/null"])
+                    .env("SHELL", "/bin/sh");
+            }
+            cmd.env("ONEFOLDER_CONFIG_DIR", self.home.path("config"))
                 .env("ONEFOLDER_DATA_DIR", self.home.path("data"))
                 .env("RCLONE_CONFIG", self.home.rclone_conf())
                 .env("NO_COLOR", "1")

@@ -1288,10 +1288,7 @@ mod tests {
             assert!(!k.may_be_partial(), "{k:?}");
         }
         // The recorded fixtures' exit codes, from real rclone runs.
-        let text = fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rclone/exit-codes.txt"),
-        )
-        .unwrap();
+        let text = fs::read_to_string(crate::rclone::fixture_path("exit-codes.txt")).unwrap();
         let codes: std::collections::HashMap<&str, i32> = text
             .lines()
             .filter(|l| !l.starts_with('#'))

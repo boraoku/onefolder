@@ -662,23 +662,13 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let bisync = root.path().join("bisync.jsonl");
         fs::copy(
-            concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/tests/fixtures/rclone/bisync-own-conflict.jsonl"
-            ),
+            crate::rclone::fixture_path("bisync-own-conflict.jsonl"),
             &bisync,
         )
         .unwrap();
         assert!(records_conflict(&bisync));
         let plain = root.path().join("copy.jsonl");
-        fs::copy(
-            concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/tests/fixtures/rclone/copy-real.jsonl"
-            ),
-            &plain,
-        )
-        .unwrap();
+        fs::copy(crate::rclone::fixture_path("copy-real.jsonl"), &plain).unwrap();
         assert!(!records_conflict(&plain));
         assert!(records_conflict(&root.path().join("missing.jsonl")));
     }

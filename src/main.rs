@@ -5,6 +5,7 @@ mod cli;
 mod config;
 mod jsonout;
 mod model;
+mod platform;
 mod rclone;
 mod state;
 mod sync;

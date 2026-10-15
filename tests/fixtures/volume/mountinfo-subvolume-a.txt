@@ -1,0 +1,1 @@
+125 181 0:67 /@a /media/bora/Pool rw,relatime shared:215 - btrfs /dev/loop0 rw,ssd,discard=async,space_cache=v2,subvolid=256,subvol=/@a

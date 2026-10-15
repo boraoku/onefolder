@@ -10,8 +10,12 @@ env:
 
 jobs:
   test:
-    name: Lint and test
-    runs-on: macos-latest
+    name: Lint and test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - name: Install the toolchain from rust-toolchain.toml
@@ -27,16 +31,26 @@ jobs:
         run: cargo test --bins --test cli
 
   integration:
-    name: Integration (rclone)
-    runs-on: macos-latest
+    name: Integration (rclone, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     needs: test
     steps:
       - uses: actions/checkout@v4
       - name: Install the toolchain from rust-toolchain.toml
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - name: Install rclone and just
+      - name: Install rclone and just (Homebrew)
+        if: runner.os == 'macOS'
         run: brew install rclone just
+      - name: Install rclone and just (their own installers)
+        if: runner.os == 'Linux'
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | sudo bash -s -- --to /usr/local/bin
       - name: rclone version
         run: rclone version
       - name: Accounts tests (alias remote, fake sign-in under a pseudo-terminal)
@@ -45,10 +59,12 @@ jobs:
         run: just test-integration
       # Re-records the rclone fixtures with this rclone and checks the
       # decoder's snapshots without updating them, so a release that changes
-      # rclone's log lines fails here rather than in a user's run.
+      # rclone's log lines fails here rather than in a user's run. Runs on
+      # both systems: rclone's local backend differs between them.
       - name: Fixtures still decode the same
         run: just fixtures
 
+  # dist plans every target (macOS and Linux) from one machine.
   release-plan:
     name: Release plan (dist)
     runs-on: macos-latest

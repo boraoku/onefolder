@@ -1,0 +1,107 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set."
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType#\": #,\n\t\"HashType#\": #,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Synching Path# \"/fixture/bd/src/\" with Path# \"/fixture/bd/dst/\""
+  },
+  {
+    "event": "phase",
+    "phase": "listing"
+  },
+  {
+    "event": "phase",
+    "phase": "checking"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "f1.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "f2.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "f3.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "f4.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "f5.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "f6.txt"
+  },
+  {
+    "event": "changes",
+    "side": "path1",
+    "changes": 6,
+    "new": 0,
+    "modified": 0,
+    "deleted": 6
+  },
+  {
+    "event": "phase",
+    "phase": "checking"
+  },
+  {
+    "event": "fatal",
+    "message": "too many deletes (>50%, 6 of 10) on Path1 \"/fixture/bd/src/\". Run with --force if desired."
+  },
+  {
+    "event": "fatal",
+    "message": "Bisync aborted. Please try again."
+  },
+  {
+    "event": "fatal",
+    "message": "Failed to bisync: too many deletes"
+  },
+  {
+    "event": "stats",
+    "bytes": 0,
+    "totalBytes": 0,
+    "transfers": 0,
+    "totalTransfers": 0,
+    "checks": 14,
+    "totalChecks": 14,
+    "listed": "[listed]",
+    "errors": 1,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": "too many deletes",
+    "transferring": []
+  }
+]

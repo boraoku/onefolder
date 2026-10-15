@@ -189,8 +189,9 @@ pub fn record(
                 Some(id) => notes.push(identity_note(&shown, id)),
                 None if destination => notes.push((
                     format!(
-                        "{} {shown}: on the startup disk, so there is no drive to record.",
-                        theme::DONE
+                        "{} {shown}: {}, so there is no drive to record.",
+                        theme::DONE,
+                        crate::platform::system_disk_note(&found.mount_point)
                     ),
                     Tone::Plain,
                 )),
@@ -213,7 +214,7 @@ pub fn record(
             if {
                 let owned = path.to_path_buf();
                 volume::guarded_blocking(path, volume::DEADLINE, move || {
-                    volume::leads_into_volumes(&owned)
+                    volume::leads_onto_drive(&owned)
                 })
                 .unwrap_or(true)
             } =>
@@ -261,7 +262,10 @@ impl JobForm {
             Field::path("source", "Source", &source, false)
                 .with_placeholder("~/Documents")
                 .with_validator(required)
-                .with_help("The folder on this Mac to sync"),
+                .with_help(&format!(
+                    "The folder on {} to sync",
+                    crate::platform::words().this_computer
+                )),
             Field::list(
                 "excludes",
                 "Excludes",
@@ -651,7 +655,7 @@ impl JobForm {
                 .with_placeholder("drive root")
                 .with_help("A folder on the OneDrive account, such as Backups/Documents; empty for the whole drive"),
             Field::path("path", "Folder", &path, true)
-                .with_placeholder("/Volumes/Backup/Documents")
+                .with_placeholder(&crate::platform::placeholder_drive_path())
                 .with_help("On an external drive, the drive is recorded so a run can tell it is plugged in"),
             Field::picker(
                 "mode",
@@ -743,10 +747,10 @@ impl JobForm {
                         form.set_error("path", Some("the drive looks unplugged".into()));
                         form.message = Some((
                             format!(
-                                "{shown} is now a folder on the startup disk, so the drive looks \
+                                "{shown} is now a folder on {disk}, so the drive looks \
                                  unplugged. Plug it in and re-record, or press Re-record drive \
-                                 again to forget the drive (runs would then write to the startup \
-                                 disk)."
+                                 again to forget the drive (runs would then write to {disk}).",
+                                disk = crate::platform::words().system_disk
                             ),
                             Tone::Error,
                         ));
@@ -834,7 +838,10 @@ impl JobForm {
         if !source.is_dir() {
             self.form.set_error(
                 "source",
-                Some("that folder does not exist on this Mac".into()),
+                Some(format!(
+                    "that folder does not exist on {}",
+                    crate::platform::words().this_computer
+                )),
             );
             self.form.focus("source");
             return None;
@@ -871,11 +878,12 @@ impl JobForm {
                 self.long_names_warned = Some(job.clone());
                 let text = format!(
                     "{} The source and {} together are too long for bisync's working file \
-                     names (macOS allows {} bytes in a file name), so two-way runs would stop \
+                     names ({} allows {} bytes in a file name), so two-way runs would stop \
                      with \"names too long\". Use a shorter source or destination folder, or \
                      save again to keep it as it is.",
                     theme::SKIPPED,
                     long.join(", "),
+                    crate::platform::words().file_system,
                     rclone::bisync::NAME_MAX
                 );
                 self.form.message = Some((text, Tone::Warning));
@@ -1070,6 +1078,7 @@ mod tests {
             volume_uuid: (!weak).then(|| "A1B2C3D4-0000-4E5F-8A9B-000000000001".into()),
             partition_uuid: None,
             device: weak.then(|| "/dev/disk4s1".into()),
+            mount_root: None,
         }
     }
 
@@ -1118,7 +1127,7 @@ mod tests {
                         mount_point: "/System/Volumes/Data".into(),
                     });
                 }
-                let external = volume::is_under_volumes(p);
+                let external = volume::is_under_drives(p);
                 Ok(Found {
                     identity: external.then(|| backup_identity(weak)),
                     mount_point: if external {

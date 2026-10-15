@@ -1,0 +1,64 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Set directory modification time (using SetModTime)",
+    "object": "Projects"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Set directory modification time (using SetModTime)",
+    "object": "Projects/2026"
+  },
+  {
+    "event": "transferred",
+    "kind": "mod-time",
+    "object": "touched.txt",
+    "size": null,
+    "message": "Updated modification time in destination"
+  },
+  {
+    "event": "transferred",
+    "kind": "new",
+    "object": "Projects/2026/brief.docx",
+    "size": 6,
+    "message": "Copied (new)"
+  },
+  {
+    "event": "transferred",
+    "kind": "new",
+    "object": "new.txt",
+    "size": 6,
+    "message": "Copied (new)"
+  },
+  {
+    "event": "transferred",
+    "kind": "replaced",
+    "object": "Projects/2026/budget.xlsx",
+    "size": 10,
+    "message": "Copied (replaced existing)"
+  },
+  {
+    "event": "stats",
+    "bytes": 22,
+    "totalBytes": 22,
+    "transfers": 3,
+    "totalTransfers": 3,
+    "checks": 3,
+    "totalChecks": 3,
+    "listed": "[listed]",
+    "errors": 0,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": null,
+    "transferring": []
+  }
+]
