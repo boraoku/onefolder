@@ -535,7 +535,7 @@ To cut a release:
 2. `just release-check` runs `dist plan`, builds both macOS targets and the universal binary, and runs it.
 3. Commit, then `git tag v0.1.0 && git push origin v0.1.0`.
 
-The tag starts the release workflow, which needs the repository secret `HOMEBREW_TAP_TOKEN` (write access to `boraoku/homebrew-onefolder`). See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#releases) for what it does.
+The tag starts the release workflow, which needs the repository secret `HOMEBREW_TAP_TOKEN` (write access to `boraoku/homebrew-onefolder`) to push the formula; without it the release is still published and `onefolder.rb` is among its assets, to be copied into the tap's `Formula/` by hand, as was done for 0.1.0. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#releases) for what it does.
 
 ## Credits
 
