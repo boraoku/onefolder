@@ -1,0 +1,18 @@
+---
+source: src/ui/accounts.rs
+expression: "render(&s, 80)"
+---
+"                                                                                "
+"  Accounts  3 accounts                                                          "
+"                                                                                "
+"  ➤ work         business   onefolder-work         added 13 Oct 2026            "
+"    home         personal   onefolder-home         added 13 Oct 2026 · delta    "
+"    old-laptop   personal   onefolder-old-laptop   ✗ remote missing, press r    "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  enter test · a add · r reconnect · d remove · / filter · ? keys · q back      "
+"                                                                                "

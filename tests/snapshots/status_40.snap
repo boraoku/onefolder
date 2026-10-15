@@ -1,0 +1,100 @@
+---
+source: src/ui/status.rs
+expression: value
+---
+Status  3 jobs · 6 destinations
+
+documents   ~/Documents
+      Running    → a run is in progress
+                   (process 4242,
+                   started 13 Oct 2026
+                   11:30)
+  → work:…kups/Documents  two-way   ✓ ok
+      1h ago
+      Last run   13 Oct 2026 09:41, took
+                 2m 38s
+      Changes    Added 14 to OneDrive, 2
+                 to Mac · Updated 3 ·
+                 Deleted 0 on OneDrive,
+                 1 on Mac · 184.3 MB ·
+                 Errors 0
+      Account    ✓ work · remote
+                   onefolder-work in
+                   rclone's config
+      On hold    "Old projects/2019",
+                 "Scratch"
+      Log        …026-10-13T094102.jsonl
+  → …es/Backup/Documents  one-way   ✗
+      failed 2d ago
+      Last run   10 Oct 2026 14:02, took
+                 0s
+      Reason     Backup drive not
+                 mounted
+      Drive      ◎ not mounted (expects
+                   volume "Backup")
+      Dry run    ✓ ok 10m ago (13 Oct
+                 2026 11:30), newer than
+                 the last run
+  → …/2026/Signed copies  one-way   ◎
+      partial 15h ago
+      Last run   12 Oct 2026 20:15, took
+                 38s
+      Changes    Added 37 · Updated 5 ·
+                 430.8 MB · Errors 2
+      Drive      ✗ not mounted at
+                   /Volumes/Archive, the
+                   drive is at
+                   /Volumes/Archive 1
+                   (expects volume
+                   "Archive")
+
+photos      /Volumes/Photos SSD/Pictures
+      Source     ✓ mounted · volume
+                   "Photos SSD"
+      Run lock   ◎ stale run lock left
+                   by process 77; the
+                   next run removes it
+  → work:Notes            two-way
+      never run
+      Account    ✗ work · remote
+                   onefolder-work
+                   missing from rclone's
+                   config · run:
+                   onefolder accounts
+                   reconnect work
+      Pending    ◎ first two-way run:
+                   the next run merges
+                   both sides
+  → work:Photos           two-way   ◎
+      cancelled 2h ago
+      Last run   13 Oct 2026 08:41, took
+                 2m 38s
+      Changes    Added 4 to OneDrive, 0
+                 to Mac · Updated 0 ·
+                 Deleted 0 on OneDrive,
+                 0 on Mac · 12.0 MB ·
+                 Errors 0
+      Account    ✓ work · remote
+                   onefolder-work in
+                   rclone's config
+      Pending    ◎ the next run recovers
+                   from the interrupted
+                   run on 13 Oct 2026
+                   08:41
+  → /Vol…/Photos/Library  two-way   ✗
+      needs resync 2d ago
+      Last run   11 Oct 2026 07:41, took
+                 2m 38s
+      Reason     Bisync critical error
+      Drive      ✓ mounted · volume
+                   "Photos"
+      Pending    ✗ needs a merge
+                   (resync) on the next
+                   run: bisync stopped
+                   on a critical error:
+                   path1 and path2 are
+                   out of sync
+
+empty       ~/Empty
+  ◎ no destinations yet · add one
+    with: onefolder jobs edit empty

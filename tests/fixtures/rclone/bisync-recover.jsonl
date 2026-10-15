@@ -1,0 +1,16 @@
+{"time":"2026-10-13T19:57:22.046954+11:00","level":"info","msg":"Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set.","source":"bisync/compare.go:90"}
+{"time":"2026-10-13T19:57:22.047104+11:00","level":"info","msg":"Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType1\": 0,\n\t\"HashType2\": 0,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n","source":"bisync/compare.go:108"}
+{"time":"2026-10-13T19:57:22.047444+11:00","level":"info","msg":"Synching Path1 \"/fixture/bd/src/\" with Path2 \"/fixture/bd/dst/\"","source":"bisync/operations.go:238"}
+{"time":"2026-10-13T19:57:22.04749+11:00","level":"info","msg":"Building Path1 and Path2 listings","source":"bisync/operations.go:310"}
+{"time":"2026-10-13T19:57:22.048048+11:00","level":"info","msg":"Path1 checking for diffs","source":"bisync/operations.go:320"}
+{"time":"2026-10-13T19:57:22.048156+11:00","level":"info","msg":"- Path1             File is new                                 - big2.bin","source":"bisync/deltas.go:259"}
+{"time":"2026-10-13T19:57:22.048177+11:00","level":"info","msg":"Path1:    1 changes:    1 new,    0 modified,    0 deleted","source":"bisync/deltas.go:126"}
+{"time":"2026-10-13T19:57:22.048191+11:00","level":"info","msg":"Path2 checking for diffs","source":"bisync/operations.go:328"}
+{"time":"2026-10-13T19:57:22.048238+11:00","level":"info","msg":"Applying changes","source":"bisync/operations.go:381"}
+{"time":"2026-10-13T19:57:22.048327+11:00","level":"info","msg":"- Path1             Queue copy to Path2                         - /fixture/bd/dst/big2.bin","source":"bisync/deltas.go:384"}
+{"time":"2026-10-13T19:57:22.048344+11:00","level":"info","msg":"- Path1             Do queued copies to                         - Path2","source":"bisync/deltas.go:503"}
+{"time":"2026-10-13T19:57:22.131225+11:00","level":"info","msg":"Copied (server-side copy)","size":67108864,"object":"big2.bin","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:57:22.131412+11:00","level":"info","msg":"Updating listings","source":"bisync/operations.go:395"}
+{"time":"2026-10-13T19:57:22.132161+11:00","level":"info","msg":"Validating listings for Path1 \"/fixture/bd/src/\" vs Path2 \"/fixture/bd/dst/\"","source":"bisync/operations.go:434"}
+{"time":"2026-10-13T19:57:22.132248+11:00","level":"info","msg":"Bisync successful","source":"bisync/operations.go:218"}
+{"time":"2026-10-13T19:57:22.132277+11:00","level":"notice","msg":"\nTransferred:   \t       64 MiB / 64 MiB, 100%, 0 B/s, ETA -\nChecks:                11 / 11, 100%, Listed 6\nTransferred:            1 / 1, 100%\nServer Side Copies:     1 @ 64 MiB\nElapsed time:         0.0s\n\n","stats":{"bytes":67108864,"checks":11,"deletedDirs":0,"deletes":0,"elapsedTime":0.084719166,"errors":0,"eta":null,"fatalError":false,"listed":6,"renames":0,"retryError":false,"serverSideCopies":1,"serverSideCopyBytes":67108864,"serverSideMoveBytes":0,"serverSideMoves":0,"speed":0,"totalBytes":67108864,"totalChecks":11,"totalTransfers":1,"transferTime":0.082659207,"transfers":1},"source":"accounting/stats.go:549"}

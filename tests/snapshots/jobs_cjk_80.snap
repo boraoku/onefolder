@@ -1,0 +1,13 @@
+---
+source: src/ui/jobs.rs
+expression: value
+---
+Jobs  3 jobs · 4 destinations
+
+  documents      ~/書類/プロジェクト/二〇二六年
+      → work:バックアップ…/契約書/署名済み  two-way   ✓ 2h ago
+      → /Volumes/バックアップ/書類          one-way   ◎ not mounted
+  photos         ~/Pictures/Photos
+      → personal:Photos                     one-way   ✓ yesterday
+  notes          ~/Notes
+      → work:Notes                          two-way   ✗ failed 3d ago · 2 held

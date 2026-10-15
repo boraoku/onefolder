@@ -1,0 +1,29 @@
+---
+source: src/jsonout/accounts.rs
+assertion_line: 140
+expression: value
+---
+{
+  "onefolder": "[version]",
+  "command": "accounts remove",
+  "ok": true,
+  "data": {
+    "label": "work",
+    "remote": "onefolder-work",
+    "remote_deleted": true,
+    "remote_was_missing": false,
+    "destinations_removed": [
+      {
+        "job": "documents",
+        "id": "d-7f3a",
+        "path": "Backups/Documents"
+      }
+    ],
+    "jobs_left_empty": [
+      "documents"
+    ],
+    "state_entries_removed": 2,
+    "dry_run": false
+  },
+  "error": null
+}

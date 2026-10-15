@@ -1,0 +1,59 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Starting bandwidth limiter at 4Mi Byte/s"
+  },
+  {
+    "event": "transferred",
+    "kind": "new",
+    "object": "a.txt",
+    "size": 6,
+    "message": "Copied (new)"
+  },
+  {
+    "event": "stats",
+    "bytes": 0,
+    "totalBytes": 67108870,
+    "transfers": 1,
+    "totalTransfers": 2,
+    "checks": 0,
+    "totalChecks": 0,
+    "listed": 0,
+    "errors": 0,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": null,
+    "transferring": [
+      {
+        "name": "big.bin",
+        "bytes": 0,
+        "size": 67108864,
+        "percentage": 0.0
+      }
+    ]
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Exiting..."
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Removing failed copy",
+    "object": "big.bin.00000000.partial"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Signal received: interrupt"
+  }
+]

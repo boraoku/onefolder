@@ -1,0 +1,14 @@
+{"time":"2026-10-13T19:56:46.404548+11:00","level":"info","msg":"Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set.","source":"bisync/compare.go:90"}
+{"time":"2026-10-13T19:56:46.404653+11:00","level":"info","msg":"Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType1\": 0,\n\t\"HashType2\": 0,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n","source":"bisync/compare.go:108"}
+{"time":"2026-10-13T19:56:46.404884+11:00","level":"info","msg":"Synching Path1 \"/fixture/bg/src/\" with Path2 \"/fixture/bg/dst/\"","source":"bisync/operations.go:238"}
+{"time":"2026-10-13T19:56:46.404908+11:00","level":"info","msg":"Copying Path2 files to Path1","source":"bisync/resync.go:44"}
+{"time":"2026-10-13T19:56:46.405061+11:00","level":"info","msg":"- Path2             Resync is copying files to                  - Path1","source":"bisync/resync.go:104"}
+{"time":"2026-10-13T19:56:46.405312+11:00","level":"info","msg":"There was nothing to transfer","source":"sync/sync.go:1033"}
+{"time":"2026-10-13T19:56:46.405388+11:00","level":"info","msg":"- Path1             Resync is copying files to                  - Path2","source":"bisync/resync.go:120"}
+{"time":"2026-10-13T19:56:46.405882+11:00","level":"info","msg":"Copied (server-side copy)","size":5,"object":"g2.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.405895+11:00","level":"info","msg":"Copied (server-side copy)","size":5,"object":"g3.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.405913+11:00","level":"info","msg":"Copied (server-side copy)","size":5,"object":"g1.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.405982+11:00","level":"info","msg":"Resync updating listings","source":"bisync/resync.go:130"}
+{"time":"2026-10-13T19:56:46.406508+11:00","level":"info","msg":"Validating listings for Path1 \"/fixture/bg/src/\" vs Path2 \"/fixture/bg/dst/\"","source":"bisync/resync.go:164"}
+{"time":"2026-10-13T19:56:46.406636+11:00","level":"info","msg":"Bisync successful","source":"bisync/operations.go:218"}
+{"time":"2026-10-13T19:56:46.406662+11:00","level":"notice","msg":"\nTransferred:   \t         15 B / 15 B, 100%, 0 B/s, ETA -\nChecks:                 0 / 0, -, Listed 6\nTransferred:            3 / 3, 100%\nServer Side Copies:     3 @ 15 B\nElapsed time:         0.0s\n\n","stats":{"bytes":15,"checks":0,"deletedDirs":0,"deletes":0,"elapsedTime":0.001566833,"errors":0,"eta":null,"fatalError":false,"listed":6,"renames":0,"retryError":false,"serverSideCopies":3,"serverSideCopyBytes":15,"serverSideMoveBytes":0,"serverSideMoves":0,"speed":0,"totalBytes":15,"totalChecks":0,"totalTransfers":3,"transferTime":0.000442208,"transfers":3},"source":"accounting/stats.go:549"}

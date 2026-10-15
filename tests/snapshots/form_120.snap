@@ -1,0 +1,28 @@
+---
+source: src/ui/form.rs
+expression: value
+---
+"                                                                                                                        "
+"  Add job  new                                                                                                          "
+"                                                                                                                        "
+"    Name          documents                                                                                             "
+"                  ✗ job name "documents" is used more than once                                                         "
+"    Source        /  ✓ folder exists                                                                                    "
+"  ➤ Excludes                                                                                                            "
+"                  .DS_Store                                                                                             "
+"                ➤ node_modules/**                                                                                       "
+"                  + add a pattern                                                                                       "
+"    Destinations                                                                                                        "
+"        → work:Backups/Documents   two-way                                                                              "
+"        → /nonexistent/Backup   one-way                                                                                 "
+"        + add a destination                                                                                             "
+"    Mode          ● one-way  ○ two-way                                                                                  "
+"    Delta         ○ off                                                                                                 "
+"    Save job                                                                                                            "
+"    Cancel                                                                                                              "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"  ↑↓ move · enter edit · a add · d delete · J/K reorder · esc done                                                      "
+"                                                                                                                        "

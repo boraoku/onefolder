@@ -1,0 +1,3 @@
+[onefolder-test]
+type = alias
+remote = /tmp/onefolder-test

@@ -1,0 +1,12 @@
+---
+source: src/jsonout/run.rs
+expression: text
+---
+{"event":"start","job":"documents","destination":"d-7f3a","type":"onedrive","display":"work:Backups/Documents","mode":"one-way","index":1,"of":1,"dry_run":false}
+{"event":"preview","job":"documents","destination":"d-7f3a","new":{"files":0,"bytes":0,"paths":[]},"changed":{"files":0,"bytes":0,"paths":[]},"unchanged":0,"destination_only":0,"excludes":[],"copy_hidden":false,"effective_excludes":[],"moves":{"count":3,"bytes":35,"choice":"move","pairs":[{"from":"Projects/2025/x.pdf","to":"Archive/2025/x.pdf","size":10},{"from":"Projects/2025/y.pdf","to":"Archive/2025/y.pdf","size":20},{"from":"a.txt","to":"Notes/a.txt","size":5}],"groups":[{"from":"Projects/2025","to":"Archive/2025","files":2,"bytes":30,"folder":true},{"from":"a.txt","to":"Notes/a.txt","files":1,"bytes":5,"folder":false}]}}
+{"event":"moves","job":"documents","destination":"d-7f3a","answer":"move","by":"default","count":3,"bytes":35}
+{"event":"step","job":"documents","destination":"d-7f3a","step":"moving"}
+{"event":"progress","job":"documents","destination":"d-7f3a","step":"moving","elapsed":1,"moved":{"files":2,"of":3}}
+{"event":"error","job":"documents","destination":"d-7f3a","path":"Notes/a.txt","message":"could not be moved from a.txt on OneDrive, so it is uploaded instead: access denied"}
+{"event":"step","job":"documents","destination":"d-7f3a","step":"copying"}
+{"event":"summary","job":"documents","destination":"d-7f3a","summary":{"job":"documents","destination":"work:Backups/Documents","destination_type":"onedrive","mode":"one-way","outcome":"partial","dry_run":false,"added":{"local":0,"remote":1},"updated":{"local":0,"remote":0},"deleted":{"local":0,"remote":0},"unchanged":0,"bytes":5,"duration_ms":900,"errors":[],"conflicts":[],"destination_only":0,"log":null,"moved":{"files":2,"bytes":30}}}

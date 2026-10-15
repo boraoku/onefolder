@@ -1,0 +1,28 @@
+---
+source: src/ui/form.rs
+expression: value
+---
+"                                                                                "
+"  Add job  new                                                                  "
+"                                                                                "
+"    Name          documents                                                     "
+"  ➤ Source        /  ✓ folder exists                                            "
+"                  The folder to sync, such as ~/Documents                       "
+"    Excludes      .DS_Store, node_modules/**                                    "
+"    Destinations                                                                "
+"        → work:Backups/Documents   two-way                                      "
+"        → /nonexistent/Backup   one-way                                         "
+"        + add a destination                                                     "
+"    Mode          ● one-way  ○ two-way                                          "
+"    Delta         ○ off                                                         "
+"    Save job                                                                    "
+"    Cancel                                                                      "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  tab ↑↓ move · enter edit · b browse · ctrl-s save · esc cancel                "
+"                                                                                "

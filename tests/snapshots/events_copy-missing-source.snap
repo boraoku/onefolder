@@ -1,0 +1,65 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "error",
+    "object": "Local file system at /fixture/d/nowhere",
+    "message": "error reading source root directory: directory not found",
+    "fatal": true
+  },
+  {
+    "event": "error",
+    "object": "Local file system at /fixture/d/nowhere",
+    "message": "error reading source root directory: directory not found",
+    "fatal": true
+  },
+  {
+    "event": "error",
+    "object": "Local file system at /fixture/d/nowhere",
+    "message": "error reading source root directory: directory not found",
+    "fatal": true
+  },
+  {
+    "event": "error",
+    "object": null,
+    "message": "Attempt 1/3 failed with 1 errors and: directory not found",
+    "fatal": false
+  },
+  {
+    "event": "error",
+    "object": null,
+    "message": "Attempt 2/3 failed with 1 errors and: directory not found",
+    "fatal": false
+  },
+  {
+    "event": "error",
+    "object": null,
+    "message": "Attempt 3/3 failed with 1 errors and: directory not found",
+    "fatal": false
+  },
+  {
+    "event": "stats",
+    "bytes": 0,
+    "totalBytes": 0,
+    "transfers": 0,
+    "totalTransfers": 0,
+    "checks": 0,
+    "totalChecks": 0,
+    "listed": 0,
+    "errors": 1,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": "directory not found",
+    "transferring": []
+  },
+  {
+    "event": "notice",
+    "level": "notice",
+    "message": "Failed to copy: directory not found"
+  }
+]

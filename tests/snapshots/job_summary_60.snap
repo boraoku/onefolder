@@ -1,0 +1,12 @@
+---
+source: src/ui/summary.rs
+expression: text
+---
+============================================================
+documents   3 destinations · 1 ok · 2 failed
+  ✓ work:バック…/契約書/署名済み    two-way   ok
+  ✗ …s/Acme Corporation/Contracts   one-way   failed
+      OneDrive account spare is missing from rclone's config
+  ✗ /Volumes/バックアップ/書類      one-way   failed
+      バックアップ drive not mounted
+============================================================

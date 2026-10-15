@@ -1,0 +1,8 @@
+---
+source: src/ui/prompt.rs
+expression: value
+---
+◎ A stale lock is in the way
+  Process 4242 left ~/.local/share/onefolder/bisync/documents/d-7f3a/x..y.lck and is no longer running.
+
+  Remove it and carry on? [Y/n]

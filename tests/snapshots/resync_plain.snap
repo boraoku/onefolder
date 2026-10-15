@@ -1,0 +1,16 @@
+---
+source: src/ui/prompt.rs
+expression: value
+---
+→ work:Backups/Documents   two-way   first run
+
+  This is the first two-way run for this destination. OneFolder will merge
+  both sides: files that exist on only one side are copied to the other, and
+  where the same file differs the local copy wins (the other copy is kept
+  with a .conflict suffix). Nothing is deleted during a first run.
+
+  To OneDrive       2 files        30 B   1 new, 1 changed
+  To this Mac       1 file          5 B   1 new, 0 changed
+
+  Differ on OneDrive: the local copy wins, OneDrive keeps its copy as
+    Notes/plan.md   → Notes/plan.conflict-2026-10-13-1.md

@@ -1,0 +1,1239 @@
+//! The run screen: the destination, the phase, the overall bar, the last
+//! files and the errors, redrawn from the runner's events at most ten times
+//! a second. [`TuiReporter`] is the [`Reporter`] behind it: the screen runs
+//! on its own thread, which owns the terminal; the runner sends it messages
+//! and, for the preview, waits for the answer.
+//!
+//! When the run is over the screen closes and the summary blocks (and, for
+//! `--dry-run`, the previews) are printed on the normal screen, so they
+//! stay in the terminal's scrollback. Inside the interactive session they
+//! are shown on the session's text screen instead, and the summary blocks
+//! are printed when the session ends (see `ui::session`).
+
+use std::collections::VecDeque;
+use std::io::IsTerminal;
+use std::sync::mpsc;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
+
+use anyhow::{anyhow, Context, Result};
+use crossterm::event::{self, Event as KeyInput, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::layout::{Margin, Rect};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::Paragraph;
+use ratatui::Frame;
+
+use crate::model::{FileError, Summary};
+use crate::rclone::bisync::BisyncPhase;
+use crate::rclone::events::Stats;
+use crate::sync::oneway::Preview;
+use crate::sync::plan::{Plan, ResyncOffer};
+use crate::sync::reporter::{
+    self, Answer, Change, ConflictDone, DecidedBy, DeletedFolder, DestinationInfo, FileDone,
+    FolderAnswer, Looking, MovesAnswer, Question, Reporter, Step, Where,
+};
+use crate::sync::twoway::place;
+use crate::ui::prompt::{self, FolderPrompt, PreviewPrompt};
+use crate::ui::summary::{self as block, format_bytes, format_duration};
+use crate::ui::theme::{self, Tone};
+
+/// How many finished files the screen keeps.
+pub const RECENT: usize = 8;
+
+/// A finished line in the file list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Recent {
+    Done(FileDone),
+    Failed(FileError),
+}
+
+/// What the run screen shows.
+#[derive(Debug, Clone)]
+pub struct ProgressModel {
+    pub job: String,
+    pub dest: Option<DestinationInfo>,
+    pub step: Step,
+    /// bisync's phase within a two-way step.
+    pub bisync: Option<BisyncPhase>,
+    pub stats: Option<Stats>,
+    /// Live figures of a preview or a plan.
+    pub looking: Option<Looking>,
+    pub recent: VecDeque<Recent>,
+    pub errors: u64,
+    pub stopping: bool,
+    /// Lines from earlier destinations and problems, newest last.
+    pub notes: Vec<(String, Tone)>,
+    /// Advances on every redraw, for the spinner.
+    pub tick: usize,
+}
+
+const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+impl ProgressModel {
+    pub fn new(job: &str) -> Self {
+        ProgressModel {
+            job: job.to_string(),
+            dest: None,
+            step: Step::Checking,
+            bisync: None,
+            stats: None,
+            looking: None,
+            recent: VecDeque::new(),
+            errors: 0,
+            stopping: false,
+            notes: Vec::new(),
+            tick: 0,
+        }
+    }
+
+    pub fn start(&mut self, dest: &DestinationInfo) {
+        self.dest = Some(dest.clone());
+        self.step = Step::Checking;
+        self.bisync = None;
+        self.stats = None;
+        self.looking = None;
+        self.recent.clear();
+        self.errors = 0;
+        self.stopping = false;
+    }
+
+    fn push(&mut self, r: Recent) {
+        if self.recent.len() == RECENT {
+            self.recent.pop_front();
+        }
+        self.recent.push_back(r);
+    }
+
+    pub fn file(&mut self, f: &FileDone) {
+        self.push(Recent::Done(f.clone()));
+    }
+
+    pub fn file_error(&mut self, e: &FileError) {
+        self.errors += 1;
+        self.push(Recent::Failed(e.clone()));
+    }
+
+    /// The phase as the design names it: for the copy, Listing until the
+    /// first stats line, Comparing while files are checked and none sent,
+    /// then Transferring.
+    pub fn phase(&self) -> &'static str {
+        if self.stopping {
+            return "Stopping rclone... press Ctrl-C again to stop at once";
+        }
+        let transferring = |stats: &Option<Stats>| {
+            stats
+                .as_ref()
+                .is_some_and(|s| s.transfers > 0 || s.bytes > 0 || !s.transferring.is_empty())
+        };
+        match self.step {
+            Step::Checking => "Checking",
+            Step::Previewing => "Previewing",
+            Step::Moving => "Moving files",
+            Step::Finishing => "Finishing",
+            Step::Planning => "Planning",
+            Step::Restoring => "Restoring folders",
+            Step::Syncing | Step::Resyncing => match self.bisync {
+                Some(BisyncPhase::Applying) if transferring(&self.stats) => "Transferring",
+                Some(phase) => phase.label(),
+                None if self.step == Step::Resyncing => "Merging",
+                None => "Syncing",
+            },
+            Step::Copying => match &self.stats {
+                None => "Listing",
+                Some(s) if s.transfers == 0 && s.bytes == 0 && s.transferring.is_empty() => {
+                    "Comparing"
+                }
+                Some(_) => "Transferring",
+            },
+        }
+    }
+
+    /// The lines of the screen above the key hints, for a body `width` wide.
+    pub fn lines(&self, width: u16) -> Vec<Line<'static>> {
+        let width = usize::from(width);
+        let mut lines = vec![
+            Line::from(Span::styled(
+                format!("Run {}", self.job),
+                theme::style(Tone::Bold),
+            )),
+            Line::default(),
+        ];
+        for (text, tone) in &self.notes {
+            lines.push(Line::from(Span::styled(text.clone(), theme::style(*tone))));
+        }
+        if !self.notes.is_empty() {
+            lines.push(Line::default());
+        }
+        let Some(dest) = &self.dest else {
+            return lines;
+        };
+        let of = (dest.of > 1).then(|| format!("destination {} of {}", dest.index, dest.of));
+        // The rest of the header takes its room first; a long path is
+        // shortened in the middle with `…` rather than cut at the edge.
+        let rest = 2
+            + 3
+            + super::width(dest.mode.as_str())
+            + 3
+            + of.as_deref().map_or(0, super::width)
+            + if dest.dry_run { 10 } else { 0 };
+        let shown = super::shorten_path(&dest.display, width.saturating_sub(rest).max(12));
+        let mut header = vec![
+            Span::styled(theme::ACTION, theme::style(Tone::Accent)),
+            Span::styled(format!(" {shown}   "), theme::style(Tone::Bold)),
+            Span::raw(format!("{}   ", dest.mode.as_str())),
+        ];
+        if let Some(of) = of {
+            header.push(Span::styled(of, theme::style(Tone::Dim)));
+        }
+        if dest.dry_run {
+            header.push(Span::styled("   dry run", theme::style(Tone::Warning)));
+        }
+        lines.push(Line::from(header));
+        lines.push(Line::default());
+
+        // Phase and counts.
+        let phase = self.phase();
+        let spinner = SPINNER[self.tick % SPINNER.len()];
+        let streaming = matches!(
+            self.step,
+            Step::Copying | Step::Syncing | Step::Resyncing | Step::Restoring
+        );
+        let counts = match (&self.stats, streaming) {
+            _ if self.stopping => String::new(),
+            (Some(s), true) if phase == "Transferring" => {
+                format!(
+                    " {} {} of {} files",
+                    theme::DOT,
+                    s.transfers,
+                    s.total_transfers
+                )
+            }
+            (Some(s), true) if self.step == Step::Copying => {
+                format!(" {} {} of {} checked", theme::DOT, s.checks, s.total_checks)
+            }
+            _ => String::new(),
+        };
+        let phase_tone = if self.stopping {
+            Tone::Warning
+        } else {
+            Tone::Plain
+        };
+        // A preview or a plan: the time so far after the step's name, and
+        // the live figures under it; no bar, since the totals are unknown.
+        let looking = self
+            .looking
+            .filter(|l| l.step == self.step && !self.stopping);
+        let counts = match &looking {
+            Some(l) => format!(
+                " {} {}",
+                theme::DOT,
+                format_duration(l.elapsed_secs.saturating_mul(1000))
+            ),
+            None => counts,
+        };
+        lines.push(Line::from(vec![
+            Span::raw("  "),
+            Span::styled(phase.to_string(), theme::style(phase_tone)),
+            Span::styled(counts, theme::style(Tone::Dim)),
+        ]));
+        if let Some(l) = &looking {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled(spinner.to_string(), theme::style(Tone::Accent)),
+                Span::styled(format!(" {}", looking_figures(l)), theme::style(Tone::Dim)),
+            ]));
+            if let Some(text) = looking_destination(l) {
+                lines.push(Line::from(Span::styled(
+                    format!("    {text}"),
+                    theme::style(Tone::Dim),
+                )));
+            }
+            return lines;
+        }
+
+        // The bar, or a spinner until the total is known.
+        let bar_width = width.saturating_sub(36).clamp(10, 34);
+        match &self.stats {
+            Some(s) if s.total_bytes > 0 => {
+                let fraction = s.bytes as f64 / s.total_bytes as f64;
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(theme::bar(fraction, bar_width), theme::style(Tone::Accent)),
+                    Span::raw(format!(
+                        " {:>3}%   {} / {}",
+                        (fraction * 100.0).floor().clamp(0.0, 100.0) as u64,
+                        format_bytes(s.bytes),
+                        format_bytes(s.total_bytes)
+                    )),
+                ]));
+            }
+            _ => {
+                let files = self
+                    .stats
+                    .as_ref()
+                    .map(|s| format!("{} files", s.checks + s.transfers))
+                    .unwrap_or_default();
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(spinner.to_string(), theme::style(Tone::Accent)),
+                    Span::styled(format!(" {files}"), theme::style(Tone::Dim)),
+                ]));
+            }
+        }
+        if let Some(s) = &self.stats {
+            let eta = s
+                .eta
+                .filter(|e| e.is_finite() && *e >= 0.0)
+                .map(|e| format_duration((e * 1000.0) as u64))
+                .unwrap_or_else(|| "-".into());
+            let d = theme::DOT;
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!(
+                        "  {}/s {d} ETA {eta} {d} errors ",
+                        format_bytes(s.speed.max(0.0) as u64)
+                    ),
+                    theme::style(Tone::Dim),
+                ),
+                Span::styled(
+                    self.errors.max(s.errors).to_string(),
+                    theme::style(if self.errors.max(s.errors) > 0 {
+                        Tone::Error
+                    } else {
+                        Tone::Dim
+                    }),
+                ),
+            ]));
+        }
+        lines.push(Line::default());
+
+        // The last files, then the ones in flight.
+        // Sizes line up in one column, as in the mockup, however wide the screen.
+        let path_width = width.saturating_sub(16).clamp(20, 46);
+        for r in &self.recent {
+            let kind = self.dest.as_ref().map_or("local", |d| d.kind);
+            lines.push(match r {
+                Recent::Done(f) if f.change == Change::Deleted => {
+                    let side = match f.side {
+                        Where::Destination => place(kind),
+                        Where::Local => "this Mac",
+                    };
+                    Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(theme::SKIPPED, theme::style(Tone::Warning)),
+                        Span::raw(format!(" {}", fit(&f.path, path_width))),
+                        Span::styled(format!(" deleted on {side}"), theme::style(Tone::Dim)),
+                    ])
+                }
+                Recent::Done(f) => {
+                    // Only the modification time moved: no bytes went across.
+                    let size = f.size.map_or_else(|| "time".to_string(), format_bytes);
+                    let (glyph, tone, from) = match f.side {
+                        Where::Destination => (theme::DONE, Tone::Success, String::new()),
+                        Where::Local => (
+                            theme::DOWN,
+                            Tone::Accent,
+                            format!("   from {}", place(kind)),
+                        ),
+                    };
+                    Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(glyph, theme::style(tone)),
+                        Span::raw(format!(" {}", fit(&f.path, path_width))),
+                        Span::styled(format!(" {size:>9}{from}"), theme::style(Tone::Dim)),
+                    ])
+                }
+                Recent::Failed(e) => Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(theme::FAILED, theme::style(Tone::Error)),
+                    Span::raw(format!(" {}   ", e.path)),
+                    Span::styled(e.reason.clone(), theme::style(Tone::Error)),
+                ]),
+            });
+        }
+        if let Some(s) = &self.stats {
+            for f in &s.transferring {
+                lines.push(Line::from(vec![
+                    Span::raw("  "),
+                    Span::styled(theme::UP, theme::style(Tone::Accent)),
+                    Span::raw(format!(" {}", fit(&f.name, path_width))),
+                    Span::styled(
+                        format!(" {:>8}%", f.percentage.clamp(0.0, 100.0) as u64),
+                        theme::style(Tone::Dim),
+                    ),
+                ]));
+            }
+        }
+        lines
+    }
+
+    fn hints(&self) -> String {
+        if self.stopping {
+            "ctrl-c again to stop at once".to_string()
+        } else {
+            "ctrl-c stop".to_string()
+        }
+    }
+
+    pub fn render(&self, frame: &mut Frame) {
+        let area: Rect = frame.area().inner(Margin {
+            horizontal: 2,
+            vertical: 1,
+        });
+        if area.height < 3 {
+            return;
+        }
+        let body = Rect {
+            height: area.height - 2,
+            ..area
+        };
+        let lines = self.lines(area.width);
+        // Keep the newest lines in view.
+        let scroll = (lines.len() as u16).saturating_sub(body.height);
+        frame.render_widget(Paragraph::new(lines).scroll((scroll, 0)), body);
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                self.hints(),
+                theme::style(Tone::Dim),
+            ))),
+            Rect {
+                y: area.y + area.height - 1,
+                height: 1,
+                ..area
+            },
+        );
+    }
+}
+
+/// The live figures of a preview or a plan, on one line:
+/// `checked 12,408 · listed 31,220 · to copy 1,204 files, 3.2 GB`.
+pub fn looking_figures(l: &Looking) -> String {
+    let d = theme::DOT;
+    if l.step == Step::Moving {
+        return format!(
+            "moved {} of {} {}",
+            prompt::thousands(l.moved),
+            prompt::thousands(l.to_move),
+            if l.to_move == 1 { "file" } else { "files" }
+        );
+    }
+    let mut parts = vec![format!("checked {}", prompt::thousands(l.checked))];
+    if let Some(listed) = l.listed {
+        parts.push(format!("listed {}", prompt::thousands(listed)));
+    }
+    parts.push(format!(
+        "to copy {} {}, {}",
+        prompt::thousands(l.to_copy),
+        if l.to_copy == 1 { "file" } else { "files" },
+        format_bytes(l.to_copy_bytes)
+    ));
+    if let Some(n) = l.checking_moves {
+        parts.push(format!(
+            "checking {} possible {}",
+            prompt::thousands(n),
+            if n == 1 { "move" } else { "moves" }
+        ));
+    }
+    parts.join(&format!(" {d} "))
+}
+
+/// How far the one-way destination listing has got, or `None` for a
+/// two-way plan: `destination 18,330 files listed so far`, `still listing
+/// the destination · 48,120 files so far` once the dry run has finished
+/// first, and `destination listed · 52,004 files` when it is done.
+pub fn looking_destination(l: &Looking) -> Option<String> {
+    let n = l.destination_listed?;
+    let files = format!(
+        "{} {}",
+        prompt::thousands(n),
+        if n == 1 { "file" } else { "files" }
+    );
+    Some(if l.destination_done {
+        format!("destination listed {} {files}", theme::DOT)
+    } else if l.still_listing() {
+        format!(
+            "still listing the destination {} {files} so far",
+            theme::DOT
+        )
+    } else {
+        format!("destination {files} listed so far")
+    })
+}
+
+/// Pads or shortens a path to exactly `width` display columns, keeping its
+/// end. Wide characters count two columns and combining marks none, so a
+/// column after the path stays put for any name macOS hands back.
+pub(crate) fn fit(path: &str, width: usize) -> String {
+    if width == 0 {
+        return String::new();
+    }
+    if super::width(path) <= width {
+        return super::pad(path, width);
+    }
+    let keep = super::back(path, width.saturating_sub(1));
+    super::pad(&format!("…{keep}"), width)
+}
+
+/// Messages from the runner to the screen thread.
+enum Msg {
+    Start(DestinationInfo),
+    Step(Step),
+    Stats(Stats),
+    Looking(Looking),
+    File(FileDone),
+    FileError(FileError),
+    Stopping,
+    Note(String, Tone),
+    Phase(BisyncPhase),
+    Ask(Box<PreviewPrompt>, mpsc::Sender<Answer>),
+    Folders(Box<FolderPrompt>, mpsc::Sender<Vec<FolderAnswer>>),
+    Close,
+}
+
+/// The question on screen, and where its answer goes.
+enum Active {
+    YesNo(Box<PreviewPrompt>, mpsc::Sender<Answer>),
+    Folders(Box<FolderPrompt>, mpsc::Sender<Vec<FolderAnswer>>),
+}
+
+/// What is printed once the screen has closed.
+enum After {
+    Problem(String),
+    Skipped(String),
+    Preview(Box<Preview>),
+    Text(String),
+    Summary(Box<Summary>),
+    /// The job's closing summary, for a job with more than one destination.
+    Closing(String),
+}
+
+/// The run screen as a [`Reporter`].
+pub struct TuiReporter {
+    tx: mpsc::Sender<Msg>,
+    thread: Option<JoinHandle<Result<()>>>,
+    after: Vec<After>,
+    dry_run: bool,
+    title: String,
+    /// The current destination's type: `onedrive` or `local`.
+    kind: &'static str,
+}
+
+impl TuiReporter {
+    /// Opens the run screen on its own thread. Fails when the terminal
+    /// cannot be taken over; the caller then falls back to plain output.
+    pub fn start(job: &str, dry_run: bool) -> Result<TuiReporter> {
+        if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+            return Err(anyhow!("the run screen needs a terminal"));
+        }
+        let (tx, rx) = mpsc::channel::<Msg>();
+        let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
+        let model = ProgressModel::new(job);
+        let title = format!("Run {job}");
+        let thread = std::thread::Builder::new()
+            .name("onefolder-run-screen".into())
+            .spawn(move || screen(model, title, rx, ready_tx))
+            .context("could not start the run screen")?;
+        match ready_rx.recv() {
+            Ok(Ok(())) => Ok(TuiReporter {
+                tx,
+                thread: Some(thread),
+                after: Vec::new(),
+                dry_run,
+                title: format!("Run {job}"),
+                kind: "local",
+            }),
+            Ok(Err(e)) => {
+                let _ = thread.join();
+                Err(anyhow!(e))
+            }
+            Err(_) => {
+                let _ = thread.join();
+                Err(anyhow!("the run screen stopped before it started"))
+            }
+        }
+    }
+
+    fn send(&self, msg: Msg) {
+        // A screen that has gone (it failed, or panicked and restored the
+        // terminal) must not stop the run.
+        let _ = self.tx.send(msg);
+    }
+
+    /// Closes the screen, then prints the summaries and anything else worth
+    /// keeping on the normal screen, and `closing` (the job's summary) last.
+    /// Inside the interactive session the same text goes on the session's
+    /// page to read on a screen, and the summary blocks and `closing` are
+    /// also kept for the transcript printed when the session ends.
+    pub fn finish(mut self, closing: Option<String>) -> Result<()> {
+        if let Some(text) = closing {
+            self.after.push(After::Closing(text));
+        }
+        self.close();
+        let colour = theme::colour_on_stdout();
+        let mut out = String::new();
+        for a in &self.after {
+            match a {
+                After::Problem(m) => {
+                    let mut lines = m.lines();
+                    let mut text = String::new();
+                    if let Some(first) = lines.next() {
+                        text.push_str(&format!(
+                            "{} {first}\n",
+                            theme::paint(theme::FAILED, Tone::Error, colour)
+                        ));
+                    }
+                    for l in lines {
+                        text.push_str(&format!("{l}\n"));
+                    }
+                    super::session::record(&text);
+                    out.push_str(&text);
+                }
+                After::Skipped(line) => {
+                    let text = format!("{}\n", theme::paint(line, Tone::Warning, colour));
+                    super::session::record(&text);
+                    out.push_str(&text);
+                }
+                After::Preview(p) => {
+                    out.push_str(&prompt::render_text(p, colour));
+                    out.push('\n');
+                }
+                After::Text(text) => {
+                    out.push_str(text);
+                    out.push('\n');
+                }
+                After::Summary(s) => {
+                    let text = block::render_text(s, colour, super::terminal_width());
+                    super::session::record(&format!("{text}\n"));
+                    out.push_str(&text);
+                    out.push('\n');
+                }
+                After::Closing(text) => {
+                    super::session::record(&format!("{text}\n"));
+                    out.push_str(text);
+                    out.push('\n');
+                }
+            }
+        }
+        super::out(&out)
+    }
+
+    fn close(&mut self) {
+        self.send(Msg::Close);
+        if let Some(thread) = self.thread.take() {
+            if let Ok(Err(e)) = thread.join() {
+                super::err(&format!("{} {e:#}\n", theme::FAILED));
+            }
+        }
+    }
+}
+
+impl Drop for TuiReporter {
+    fn drop(&mut self) {
+        self.close();
+    }
+}
+
+impl TuiReporter {
+    /// Waits for the screen's answer to a question.
+    fn wait<T>(&self, rx: mpsc::Receiver<T>, fallback: T) -> T {
+        // The screen thread answers; waiting blocks this thread, so tell
+        // the runtime when it can move other work elsewhere.
+        let wait = || rx.recv().unwrap_or(fallback);
+        match tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()) {
+            Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(wait),
+            _ => wait(),
+        }
+    }
+}
+
+impl Reporter for TuiReporter {
+    fn destination_started(&mut self, dest: &DestinationInfo) {
+        self.kind = dest.kind;
+        self.send(Msg::Start(dest.clone()));
+    }
+
+    fn phase(&mut self, phase: BisyncPhase) {
+        self.send(Msg::Phase(phase));
+    }
+
+    fn plan(&mut self, plan: &Plan) {
+        if self.dry_run {
+            self.after.push(After::Text(prompt::render_plan_text(
+                plan,
+                theme::colour_on_stdout(),
+            )));
+        }
+    }
+
+    /// The merge explanation is always printed once the screen closes,
+    /// also when `--yes` answered the question without showing it.
+    fn resync(&mut self, offer: &ResyncOffer) {
+        self.after.push(After::Text(prompt::render_resync_text(
+            offer,
+            theme::colour_on_stdout(),
+        )));
+        self.send(Msg::Note(
+            "  Merging both sides (nothing is deleted by a merge).".to_string(),
+            Tone::Dim,
+        ));
+    }
+
+    fn confirm(&mut self, question: &Question) -> Answer {
+        if let Question::Moves(p) = question {
+            let screen = PreviewPrompt::moves(self.title.clone(), p);
+            let (tx, rx) = mpsc::channel();
+            self.send(Msg::Ask(Box::new(screen), tx));
+            return self.wait(rx, Answer::No);
+        }
+        let (mut body, q, default) = prompt::question(question, self.kind);
+        let mut full = Vec::new();
+        let verb = match question {
+            Question::Plan(p) => {
+                let (lines, lists) = prompt::plan_screen(p);
+                body.splice(0..0, lines);
+                full = lists;
+                "sync"
+            }
+            Question::Resync(o) => {
+                body.splice(0..0, prompt::resync_lines(o));
+                "merge"
+            }
+            Question::StaleLock { .. } => "remove it",
+            Question::Retry(_) => "run again",
+            Question::Moves(_) => "move",
+        };
+        let screen = PreviewPrompt::with_lines(self.title.clone(), body, q, default, verb)
+            .with_full_lists(full);
+        let (tx, rx) = mpsc::channel();
+        self.send(Msg::Ask(Box::new(screen), tx));
+        self.wait(rx, Answer::No)
+    }
+
+    fn ask_folders(&mut self, kind: &str, folders: &[DeletedFolder]) -> Vec<FolderAnswer> {
+        let screen = FolderPrompt::new(self.title.clone(), kind, folders.to_vec());
+        let (tx, rx) = mpsc::channel();
+        self.send(Msg::Folders(Box::new(screen), tx));
+        self.wait(rx, vec![FolderAnswer::CancelRun; folders.len()])
+    }
+
+    fn moves_decided(&mut self, preview: &Preview, answer: MovesAnswer, by: DecidedBy) {
+        self.send(Msg::Note(
+            format!(
+                "  {} {}",
+                theme::ACTION,
+                prompt::moves_decision(preview, answer, by)
+            ),
+            Tone::Dim,
+        ));
+    }
+
+    fn folder_decided(&mut self, folder: &DeletedFolder, answer: FolderAnswer, by: DecidedBy) {
+        self.send(Msg::Note(
+            format!(
+                "  {} {}: {}",
+                theme::ACTION,
+                crate::ui::quoted(&folder.path),
+                prompt::folder_decision(answer, by, self.kind)
+            ),
+            Tone::Dim,
+        ));
+    }
+
+    fn conflict(&mut self, conflict: &ConflictDone) {
+        let kept = conflict
+            .kept_as
+            .as_deref()
+            .map(|k| format!(", {} keeps its copy as {k}", place(self.kind)))
+            .unwrap_or_default();
+        self.send(Msg::Note(
+            format!(
+                "  {} {}: the local copy won{kept}",
+                theme::SKIPPED,
+                conflict.path
+            ),
+            Tone::Warning,
+        ));
+    }
+
+    fn step(&mut self, step: Step) {
+        self.send(Msg::Step(step));
+    }
+
+    fn stats(&mut self, stats: &Stats) {
+        self.send(Msg::Stats(stats.clone()));
+    }
+
+    fn looking(&mut self, looking: &Looking) {
+        self.send(Msg::Looking(*looking));
+    }
+
+    fn file(&mut self, file: &FileDone) {
+        self.send(Msg::File(file.clone()));
+    }
+
+    fn file_error(&mut self, error: &FileError) {
+        self.send(Msg::FileError(error.clone()));
+    }
+
+    fn stopping(&mut self) {
+        self.send(Msg::Stopping);
+    }
+
+    fn preview(&mut self, preview: &Preview) {
+        if self.dry_run {
+            self.after.push(After::Preview(Box::new(preview.clone())));
+        }
+    }
+
+    fn confirm_preview(&mut self, preview: &Preview) -> Answer {
+        let (tx, rx) = mpsc::channel();
+        let screen = PreviewPrompt::new(self.title.clone(), preview.clone());
+        self.send(Msg::Ask(Box::new(screen), tx));
+        self.wait(rx, Answer::No)
+    }
+
+    fn problem(&mut self, message: &str) {
+        let first = message.lines().next().unwrap_or(message);
+        self.send(Msg::Note(format!("{} {first}", theme::FAILED), Tone::Error));
+        self.after.push(After::Problem(message.to_string()));
+    }
+
+    fn note(&mut self, message: &str) {
+        self.send(Msg::Note(format!("  {message}"), Tone::Dim));
+    }
+
+    fn destination_skipped(&mut self, dest: &DestinationInfo, reason: &str) {
+        let line = format!("{} {} {reason}", theme::SKIPPED, dest.display);
+        self.send(Msg::Note(line.clone(), Tone::Warning));
+        self.after.push(After::Skipped(line));
+    }
+
+    fn destination_finished(&mut self, summary: &Summary) {
+        let (word, tone) = block::status_word(summary);
+        let glyph = match tone {
+            Tone::Success => theme::DONE,
+            Tone::Error => theme::FAILED,
+            _ => theme::SKIPPED,
+        };
+        self.send(Msg::Note(
+            format!("{glyph} {}   {word}", summary.destination),
+            tone,
+        ));
+        self.after.push(After::Summary(Box::new(summary.clone())));
+    }
+}
+
+/// The screen thread: owns the terminal until told to close.
+fn screen(
+    mut model: ProgressModel,
+    _title: String,
+    rx: mpsc::Receiver<Msg>,
+    ready: mpsc::Sender<Result<(), String>>,
+) -> Result<()> {
+    // The session's terminal, or one of its own. Either way a signal that
+    // ends OneFolder while this screen is up (one sent from outside during
+    // the preview question) restores the terminal first.
+    let mut terminal = match super::screen() {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = ready.send(Err(format!("could not start the run screen: {e:#}")));
+            return Ok(());
+        }
+    };
+    let _ = ready.send(Ok(()));
+    let mut prompt: Option<Active> = None;
+    let mut dirty = true;
+    let mut last_draw = Instant::now() - Duration::from_secs(1);
+    let frame = Duration::from_millis(100);
+    loop {
+        // Messages first, all that are waiting.
+        loop {
+            match rx.try_recv() {
+                Ok(Msg::Close) | Err(mpsc::TryRecvError::Disconnected) => return Ok(()),
+                Ok(msg) => {
+                    dirty = true;
+                    match msg {
+                        Msg::Start(d) => model.start(&d),
+                        Msg::Step(s) => {
+                            model.step = s;
+                            model.bisync = None;
+                            model.stats = None;
+                            model.looking = None;
+                        }
+                        Msg::Phase(p) => model.bisync = Some(p),
+                        Msg::Stats(s) => model.stats = Some(s),
+                        Msg::Looking(l) => model.looking = Some(l),
+                        Msg::File(f) => model.file(&f),
+                        Msg::FileError(e) => model.file_error(&e),
+                        Msg::Stopping => model.stopping = true,
+                        Msg::Note(text, tone) => model.notes.push((text, tone)),
+                        Msg::Ask(p, reply) => prompt = Some(Active::YesNo(p, reply)),
+                        Msg::Folders(p, reply) => prompt = Some(Active::Folders(p, reply)),
+                        Msg::Close => {}
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+            }
+        }
+        if dirty && last_draw.elapsed() >= frame {
+            model.tick = model.tick.wrapping_add(1);
+            terminal
+                .draw(|f| match &prompt {
+                    Some(Active::YesNo(p, _)) => p.render(f),
+                    Some(Active::Folders(p, _)) => p.render(f),
+                    None => model.render(f),
+                })
+                .context("could not draw the run screen")?;
+            last_draw = Instant::now();
+            dirty = false;
+        }
+        if event::poll(Duration::from_millis(50)).context("could not read a key")? {
+            let KeyInput::Key(key) = event::read().context("could not read a key")? else {
+                dirty = true;
+                continue;
+            };
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+            dirty = true;
+            let ctrl_c =
+                key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c');
+            if let Some(active) = &mut prompt {
+                // Ctrl-C at the question stops the whole run, as in plain
+                // mode: this destination is not copied and the rest are skipped.
+                if ctrl_c {
+                    reporter::request_stop();
+                }
+                let done = match active {
+                    Active::YesNo(p, reply) => p.handle_key(key).map(|a| {
+                        let _ = reply.send(a);
+                    }),
+                    Active::Folders(p, reply) => p.handle_key(key).map(|a| {
+                        let _ = reply.send(a);
+                    }),
+                };
+                if done.is_some() {
+                    prompt = None;
+                }
+                continue;
+            }
+            if ctrl_c {
+                model.stopping = true;
+                reporter::request_stop();
+            }
+        } else if model.step != Step::Finishing {
+            // Keep the spinner turning.
+            dirty = true;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Mode;
+    use crate::rclone::events::InFlight;
+    use ratatui::backend::TestBackend;
+    use ratatui::Terminal;
+
+    /// The run from the design's mockup, as a sequence of events.
+    fn mockup() -> ProgressModel {
+        let mut m = ProgressModel::new("documents");
+        m.start(&DestinationInfo {
+            job: "documents".into(),
+            id: "d-7f3a".into(),
+            kind: "onedrive",
+            display: "work:Backups/Documents".into(),
+            mode: Mode::OneWay,
+            index: 1,
+            of: 2,
+            dry_run: false,
+        });
+        m.step = Step::Copying;
+        for (path, size) in [
+            ("Projects/2026/brief.docx", 1_200_000),
+            ("Projects/2026/budget.xlsx", 248_000),
+        ] {
+            m.file(&FileDone {
+                path: path.into(),
+                size: Some(size),
+                change: Change::Added,
+                side: Where::Destination,
+            });
+        }
+        m.file_error(&FileError {
+            path: "Projects/2024/old.mov".into(),
+            reason: "OneDrive: file too large (250 GiB limit)".into(),
+        });
+        m.stats = Some(Stats {
+            bytes: 312_400_000,
+            total_bytes: 760_100_000,
+            transfers: 42,
+            total_transfers: 118,
+            checks: 981,
+            total_checks: 981,
+            errors: 1,
+            eta: Some(35.0),
+            speed: 12_800_000.0,
+            elapsed_time: 24.0,
+            transferring: vec![InFlight {
+                name: "Projects/2026/deck.pptx".into(),
+                bytes: 6_200_000,
+                size: 10_000_000,
+                percentage: 62.0,
+            }],
+            ..Stats::default()
+        });
+        m
+    }
+
+    fn render(model: &ProgressModel, width: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, 18)).unwrap();
+        terminal.draw(|f| model.render(f)).unwrap();
+        terminal.backend().to_string()
+    }
+
+    fn snapshot(name: &str, value: String) {
+        insta::with_settings!({
+            snapshot_path => concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots"),
+            prepend_module_to_snapshot => false,
+        }, {
+            insta::assert_snapshot!(name, value);
+        });
+    }
+
+    #[test]
+    fn renders_at_80_columns() {
+        snapshot("progress_80", render(&mockup(), 80));
+    }
+
+    #[test]
+    fn a_long_destination_is_shortened_with_an_ellipsis() {
+        let mut m = mockup();
+        if let Some(d) = m.dest.as_mut() {
+            d.display =
+                "/private/tmp/claude-501/-Users-bora-Apps-onefolder/56475fcb/scratchpad/m12pty/dst"
+                    .into();
+        }
+        let text = render(&m, 80);
+        let header = text
+            .lines()
+            .find(|l| l.contains("one-way"))
+            .unwrap_or_default();
+        assert!(
+            header.contains('…') && header.contains("m12pty/dst"),
+            "{text}"
+        );
+        assert!(header.contains("destination 1 of 2"), "{text}");
+    }
+
+    #[test]
+    fn renders_at_120_columns() {
+        snapshot("progress_120", render(&mockup(), 120));
+    }
+
+    #[test]
+    fn stopping_and_listing() {
+        let mut m = mockup();
+        m.stopping = true;
+        m.notes.push((
+            "✓ /Volumes/Backup/Documents   complete".into(),
+            Tone::Success,
+        ));
+        snapshot("progress_stopping_80", render(&m, 80));
+        let mut m = mockup();
+        m.stats = None;
+        m.recent.clear();
+        assert_eq!(m.phase(), "Listing");
+        m.stats = Some(Stats {
+            checks: 10,
+            total_checks: 40,
+            ..Stats::default()
+        });
+        assert_eq!(m.phase(), "Comparing");
+        m.step = Step::Previewing;
+        assert_eq!(m.phase(), "Previewing");
+    }
+
+    #[test]
+    fn two_way_sync_screen() {
+        let mut m = mockup();
+        if let Some(d) = &mut m.dest {
+            d.mode = Mode::TwoWay;
+        }
+        m.step = Step::Syncing;
+        m.bisync = Some(BisyncPhase::Applying);
+        m.file(&FileDone {
+            path: "Shared/meeting-notes.md".into(),
+            size: Some(14_000),
+            change: Change::Added,
+            side: Where::Local,
+        });
+        m.file(&FileDone {
+            path: "Drafts/old.txt".into(),
+            size: None,
+            change: Change::Deleted,
+            side: Where::Destination,
+        });
+        assert_eq!(m.phase(), "Transferring");
+        snapshot("progress_two_way_80", render(&m, 80));
+        snapshot("progress_two_way_120", render(&m, 120));
+        m.stats = None;
+        m.bisync = Some(BisyncPhase::Updating);
+        assert_eq!(m.phase(), "Updating listings");
+        m.step = Step::Planning;
+        assert_eq!(m.phase(), "Planning");
+    }
+
+    /// A long preview: the time so far, the figures, and how far the
+    /// destination listing has got; no bar.
+    fn previewing() -> ProgressModel {
+        let mut m = mockup();
+        m.step = Step::Previewing;
+        m.stats = None;
+        m.recent.clear();
+        let mut l = Looking::new(Step::Previewing);
+        l.elapsed_secs = 134;
+        l.checked = 12_408;
+        l.listed = Some(31_220);
+        l.to_copy = 1_204;
+        l.to_copy_bytes = 3_200_000_000;
+        l.destination_listed = Some(18_330);
+        m.looking = Some(l);
+        m
+    }
+
+    #[test]
+    fn preview_shows_live_figures() {
+        let m = previewing();
+        snapshot("progress_previewing_80", render(&m, 80));
+        // The dry run finished first: the listing is still going.
+        let mut m = previewing();
+        if let Some(l) = &mut m.looking {
+            l.elapsed_secs = 1_203;
+            l.dry_run_done = true;
+            l.destination_listed = Some(48_120);
+        }
+        snapshot("progress_previewing_listing_80", render(&m, 80));
+        // Two-way planning: no destination listing line.
+        let mut m = previewing();
+        m.step = Step::Planning;
+        if let Some(l) = &mut m.looking {
+            l.step = Step::Planning;
+            l.destination_listed = None;
+        }
+        let text = render(&m, 80);
+        assert!(text.contains("Planning · 2m 14s"), "{text}");
+        assert!(text.contains("checked 12,408"), "{text}");
+        assert!(!text.contains("destination 18"), "{text}");
+        // Figures from another step are not shown.
+        m.step = Step::Syncing;
+        assert!(!render(&m, 80).contains("checked 12,408"));
+    }
+
+    #[test]
+    fn moving_shows_files_moved() {
+        let mut m = previewing();
+        m.step = Step::Moving;
+        let mut l = Looking::new(Step::Moving);
+        l.moved = 12;
+        l.to_move = 1_204;
+        l.elapsed_secs = 3;
+        m.looking = Some(l);
+        let text = render(&m, 80);
+        assert!(text.contains("Moving files · 3s"), "{text}");
+        assert!(text.contains("moved 12 of 1,204 files"), "{text}");
+        assert!(!text.contains("listed"), "{text}");
+        l.to_move = 1;
+        l.moved = 1;
+        assert_eq!(looking_figures(&l), "moved 1 of 1 file");
+        // Checking possible moves while previewing.
+        let mut l = Looking::new(Step::Previewing);
+        l.checking_moves = Some(12);
+        assert_eq!(
+            looking_figures(&l),
+            "checked 0 · to copy 0 files, 0 B · checking 12 possible moves"
+        );
+        l.checking_moves = Some(1);
+        assert!(looking_figures(&l).ends_with("checking 1 possible move"));
+    }
+
+    #[test]
+    fn live_figure_wording() {
+        let mut l = Looking::new(Step::Previewing);
+        assert_eq!(looking_figures(&l), "checked 0 · to copy 0 files, 0 B");
+        assert_eq!(looking_destination(&l), None);
+        l.checked = 1_234_567;
+        l.listed = Some(2_000);
+        l.to_copy = 1;
+        l.to_copy_bytes = 2_048;
+        assert_eq!(
+            looking_figures(&l),
+            format!(
+                "checked 1,234,567 · listed 2,000 · to copy 1 file, {}",
+                format_bytes(2_048)
+            )
+        );
+        l.destination_listed = Some(1);
+        assert_eq!(
+            looking_destination(&l).unwrap(),
+            "destination 1 file listed so far"
+        );
+        l.dry_run_done = true;
+        l.destination_listed = Some(48_120);
+        assert!(l.still_listing());
+        assert_eq!(
+            looking_destination(&l).unwrap(),
+            "still listing the destination · 48,120 files so far"
+        );
+        l.destination_done = true;
+        assert!(!l.still_listing());
+        assert_eq!(
+            looking_destination(&l).unwrap(),
+            "destination listed · 48,120 files"
+        );
+    }
+
+    #[test]
+    fn keeps_the_last_eight_files() {
+        let mut m = ProgressModel::new("x");
+        for i in 0..20 {
+            m.file(&FileDone {
+                path: format!("f{i}"),
+                size: Some(1),
+                change: Change::Updated,
+                side: Where::Destination,
+            });
+        }
+        assert_eq!(m.recent.len(), RECENT);
+        assert_eq!(
+            m.recent.front(),
+            Some(&Recent::Done(FileDone {
+                path: "f12".into(),
+                size: Some(1),
+                change: Change::Updated,
+                side: Where::Destination,
+            }))
+        );
+    }
+
+    #[test]
+    fn long_paths_keep_their_end() {
+        assert_eq!(fit("abc", 5), "abc  ");
+        assert_eq!(fit("a/very/long/name.txt", 10), "…/name.txt");
+        assert_eq!(fit("a/very/long/name.txt", 10).chars().count(), 10);
+        // Display columns, not characters: wide names and decomposed accents.
+        let wide = fit("日本語のフォルダ/写真ファイル番号_1.jpg", 20);
+        assert_eq!(crate::ui::width(&wide), 20, "{wide}");
+        assert!(
+            wide.starts_with('…') && wide.trim_end().ends_with("_1.jpg"),
+            "{wide}"
+        );
+        // An odd column left after a wide character is padded.
+        assert_eq!(crate::ui::width(&fit("日本語のフォルダ", 6)), 6);
+        let nfd = fit("Cafe\u{301}/re\u{301}sume\u{301}.docx", 20);
+        assert_eq!(crate::ui::width(&nfd), 20);
+        assert!(nfd.starts_with("Cafe\u{301}/"));
+        assert_eq!(fit("abc", 0), "");
+    }
+}

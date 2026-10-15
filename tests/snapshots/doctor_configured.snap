@@ -1,0 +1,30 @@
+---
+source: src/cli/doctor.rs
+expression: "scrub(&render(&report, false, None), root.path())"
+---
+Doctor
+
+➤ rclone
+  ✓ /opt/homebrew/bin/rclone · 1.75.2 (minimum 1.66)
+
+➤ Accounts
+  ◎ work        business   connection not checked
+  ◎ personal    personal   connection not checked
+
+➤ Jobs
+  ✓ documents   source ok
+      ◎ work:Backups/Documents       not checked yet
+      ◎ /Volumes/Backup/Documents    not mounted (expects volume "Backup")
+  ✗ photos      source missing
+      ◎ personal:Photos              not checked yet
+  ◎ notes       source ok · no destinations yet
+
+➤ Data
+  ✓ config /TMP/config/config.toml (version 1 · 2 accounts · 3 jobs)
+  ◎ state /TMP/data/state.json not created yet, it is written after the first run
+  ✓ data /TMP/data writable
+  ✓ logs 1 log, 3 KB · 13 Oct 2026
+
+======================================================================
+1 problem · 2 warnings
+======================================================================

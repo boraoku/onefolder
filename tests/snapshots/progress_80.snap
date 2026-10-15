@@ -1,0 +1,23 @@
+---
+source: src/ui/progress.rs
+assertion_line: 665
+expression: value
+---
+"                                                                                "
+"  Run documents                                                                 "
+"                                                                                "
+"  → work:Backups/Documents   one-way   destination 1 of 2                       "
+"                                                                                "
+"    Transferring · 42 of 118 files                                              "
+"    ██████████████░░░░░░░░░░░░░░░░░░░░  41%   312.4 MB / 760.1 MB               "
+"    12.8 MB/s · ETA 35s · errors 1                                              "
+"                                                                                "
+"    ✓ Projects/2026/brief.docx                          1.2 MB                  "
+"    ✓ Projects/2026/budget.xlsx                         248 KB                  "
+"    ✗ Projects/2024/old.mov   OneDrive: file too large (250 GiB limit)          "
+"    ↑ Projects/2026/deck.pptx                              62%                  "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  ctrl-c stop                                                                   "
+"                                                                                "

@@ -1,0 +1,12 @@
+---
+source: src/cli/doctor.rs
+expression: text
+---
+Prune logs (dry run, nothing is removed)
+
+  → documents/d-7f3a/2026-06-01T094102.jsonl   older than 90 days · 12 KB
+
+  Old enough to go, or one too many, but kept:
+  ◎ photos/d-0001/2026-01-01T094102.jsonl   kept, job removed (older than 90 days)
+
+Would remove 1 file, 12 KB · kept 47 logs, 12.4 MB

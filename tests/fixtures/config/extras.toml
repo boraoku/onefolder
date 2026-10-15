@@ -1,0 +1,28 @@
+# OneFolder config, edited by hand.
+version = 1
+theme = "dark"   # not a OneFolder key yet; must survive a save
+
+[[accounts]]
+label      = "work"                 # the work tenant
+remote     = "onefolder-work"
+drive_type = "business"
+added      = 2026-10-13T09:40:00+11:00
+delta      = true                   # unknown to milestone 1
+
+[[jobs]]
+name     = "documents"              # renamed in a test
+source   = "/Users/bora/Documents"
+excludes = [ ".DS_Store",  "*.tmp" ]   # spaced oddly on purpose
+notes    = "keep me"
+
+  # The cloud copy.
+  [[jobs.destinations]]
+  id      = "d-7f3a"
+  type    = "onedrive"
+  account = "work"
+  path    = "Backups/Documents"
+  mode    = "two-way"
+  colour  = "blue"                  # unknown key in a destination
+
+[extra]
+anything = [1, 2, 3]

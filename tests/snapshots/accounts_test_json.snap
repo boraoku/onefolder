@@ -1,0 +1,38 @@
+---
+source: src/jsonout/accounts.rs
+assertion_line: 140
+expression: value
+---
+{
+  "onefolder": "[version]",
+  "command": "accounts test",
+  "ok": false,
+  "data": [
+    {
+      "label": "work",
+      "remote": "onefolder-work",
+      "drive_type": "business",
+      "ok": true,
+      "status": "connected",
+      "quota": {
+        "total": 1099511627776,
+        "used": 338812420413,
+        "free": 760694187747,
+        "trashed": 0
+      },
+      "message": null,
+      "hint": null
+    },
+    {
+      "label": "personal",
+      "remote": "onefolder-personal",
+      "drive_type": "personal",
+      "ok": false,
+      "status": "token-expired",
+      "quota": null,
+      "message": "failed to get root: couldn't fetch token",
+      "hint": "onefolder accounts reconnect personal"
+    }
+  ],
+  "error": null
+}

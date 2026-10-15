@@ -1,0 +1,320 @@
+---
+source: src/ui/status.rs
+expression: value
+---
+{
+  "onefolder": "[version]",
+  "command": "status",
+  "ok": true,
+  "data": {
+    "state_error": null,
+    "jobs": [
+      {
+        "name": "documents",
+        "source": "/Users/bora/Documents",
+        "source_volume": null,
+        "run_lock": {
+          "state": "running",
+          "pid": 4242,
+          "started": "2026-10-13T11:30:00+11:00",
+          "path": "/Users/bora/.local/share/onefolder/runs/documents.lock"
+        },
+        "destinations": [
+          {
+            "id": "d-7f3a",
+            "type": "onedrive",
+            "display": "work:Backups/Documents",
+            "path": "Backups/Documents",
+            "mode": "two-way",
+            "account": "work",
+            "remote": "onefolder-work",
+            "remote_exists": true,
+            "volume": null,
+            "last_run": {
+              "started": "2026-10-13T09:41:02+11:00",
+              "finished": "2026-10-13T09:43:40+11:00",
+              "mode": "two-way",
+              "dry_run": false,
+              "outcome": "ok",
+              "added": {
+                "local": 2,
+                "remote": 14
+              },
+              "updated": {
+                "local": 0,
+                "remote": 3
+              },
+              "deleted": {
+                "local": 1,
+                "remote": 0
+              },
+              "bytes": 184329113,
+              "errors": 0,
+              "log": "logs/documents/d-7f3a/2026-10-13T094102.jsonl",
+              "rclone_version": "1.75.2"
+            },
+            "last_dry_run": null,
+            "dry_run_newer": false,
+            "log": "/Users/bora/.local/share/onefolder/logs/documents/d-7f3a/2026-10-13T094102.jsonl",
+            "holds": [
+              "Old projects/2019",
+              "Scratch"
+            ],
+            "pending": null
+          },
+          {
+            "id": "d-91c0",
+            "type": "local",
+            "display": "/Volumes/Backup/Documents",
+            "path": "/Volumes/Backup/Documents",
+            "mode": "one-way",
+            "account": null,
+            "remote": null,
+            "remote_exists": null,
+            "volume": {
+              "state": "not-mounted",
+              "severity": "warning",
+              "message": "not mounted (expects volume \"Backup\")",
+              "mount_point": "/Volumes/Backup",
+              "elsewhere": null
+            },
+            "last_run": {
+              "started": "2026-10-10T14:02:00+11:00",
+              "finished": "2026-10-10T14:02:00+11:00",
+              "mode": "one-way",
+              "dry_run": false,
+              "outcome": "failed",
+              "added": {
+                "local": 0,
+                "remote": 0
+              },
+              "updated": {
+                "local": 0,
+                "remote": 0
+              },
+              "deleted": {
+                "local": 0,
+                "remote": 0
+              },
+              "bytes": 0,
+              "errors": 0,
+              "log": "",
+              "rclone_version": "1.75.2",
+              "reason": "Backup drive not mounted"
+            },
+            "last_dry_run": {
+              "started": "2026-10-13T11:30:40+11:00",
+              "finished": "2026-10-13T11:31:00+11:00",
+              "mode": "one-way",
+              "dry_run": true,
+              "outcome": "ok",
+              "added": {
+                "local": 0,
+                "remote": 0
+              },
+              "updated": {
+                "local": 0,
+                "remote": 0
+              },
+              "deleted": {
+                "local": 0,
+                "remote": 0
+              },
+              "bytes": 0,
+              "errors": 0,
+              "log": "",
+              "rclone_version": "1.75.2"
+            },
+            "dry_run_newer": true,
+            "log": null,
+            "holds": [],
+            "pending": null
+          },
+          {
+            "id": "d-0b0b",
+            "type": "local",
+            "display": "/Volumes/Archive/Clients/Acme Corporation/Contracts/2026/Signed copies",
+            "path": "/Volumes/Archive/Clients/Acme Corporation/Contracts/2026/Signed copies",
+            "mode": "one-way",
+            "account": null,
+            "remote": null,
+            "remote_exists": null,
+            "volume": {
+              "state": "not-mounted",
+              "severity": "problem",
+              "message": "not mounted at /Volumes/Archive, the drive is at /Volumes/Archive 1 (expects volume \"Archive\")",
+              "mount_point": "/Volumes/Archive",
+              "elsewhere": "/Volumes/Archive 1"
+            },
+            "last_run": {
+              "started": "2026-10-12T20:15:02+11:00",
+              "finished": "2026-10-12T20:15:40+11:00",
+              "mode": "one-way",
+              "dry_run": false,
+              "outcome": "partial",
+              "added": {
+                "local": 0,
+                "remote": 37
+              },
+              "updated": {
+                "local": 0,
+                "remote": 5
+              },
+              "deleted": {
+                "local": 0,
+                "remote": 0
+              },
+              "bytes": 430800000,
+              "errors": 2,
+              "log": "",
+              "rclone_version": "1.75.2"
+            },
+            "last_dry_run": null,
+            "dry_run_newer": false,
+            "log": null,
+            "holds": [],
+            "pending": null
+          }
+        ]
+      },
+      {
+        "name": "photos",
+        "source": "/Volumes/Photos SSD/Pictures",
+        "source_volume": {
+          "state": "mounted",
+          "severity": "ok",
+          "message": "mounted · volume \"Photos SSD\"",
+          "mount_point": "/Volumes/Photos SSD",
+          "elsewhere": null
+        },
+        "run_lock": {
+          "state": "stale",
+          "pid": 77,
+          "started": null,
+          "path": "/Users/bora/.local/share/onefolder/runs/photos.lock"
+        },
+        "destinations": [
+          {
+            "id": "d-1111",
+            "type": "onedrive",
+            "display": "work:Notes",
+            "path": "Notes",
+            "mode": "two-way",
+            "account": "work",
+            "remote": "onefolder-work",
+            "remote_exists": false,
+            "volume": null,
+            "last_run": null,
+            "last_dry_run": null,
+            "dry_run_newer": false,
+            "log": null,
+            "holds": [],
+            "pending": {
+              "state": "first-run",
+              "detail": null
+            }
+          },
+          {
+            "id": "d-2222",
+            "type": "onedrive",
+            "display": "work:Photos",
+            "path": "Photos",
+            "mode": "two-way",
+            "account": "work",
+            "remote": "onefolder-work",
+            "remote_exists": true,
+            "volume": null,
+            "last_run": {
+              "started": "2026-10-13T08:41:02+11:00",
+              "finished": "2026-10-13T08:43:40+11:00",
+              "mode": "two-way",
+              "dry_run": false,
+              "outcome": "cancelled",
+              "added": {
+                "local": 0,
+                "remote": 4
+              },
+              "updated": {
+                "local": 0,
+                "remote": 0
+              },
+              "deleted": {
+                "local": 0,
+                "remote": 0
+              },
+              "bytes": 12000000,
+              "errors": 0,
+              "log": "",
+              "rclone_version": "1.75.2"
+            },
+            "last_dry_run": null,
+            "dry_run_newer": false,
+            "log": null,
+            "holds": [],
+            "pending": {
+              "state": "recovering",
+              "detail": "2026-10-13T08:41:02+11:00"
+            }
+          },
+          {
+            "id": "d-3333",
+            "type": "local",
+            "display": "/Volumes/Photos/Library",
+            "path": "/Volumes/Photos/Library",
+            "mode": "two-way",
+            "account": null,
+            "remote": null,
+            "remote_exists": null,
+            "volume": {
+              "state": "mounted",
+              "severity": "ok",
+              "message": "mounted · volume \"Photos\"",
+              "mount_point": "/Volumes/Photos",
+              "elsewhere": null
+            },
+            "last_run": {
+              "started": "2026-10-11T07:41:02+11:00",
+              "finished": "2026-10-11T07:43:40+11:00",
+              "mode": "two-way",
+              "dry_run": false,
+              "outcome": "needs-resync",
+              "added": {
+                "local": 0,
+                "remote": 0
+              },
+              "updated": {
+                "local": 0,
+                "remote": 0
+              },
+              "deleted": {
+                "local": 0,
+                "remote": 0
+              },
+              "bytes": 0,
+              "errors": 0,
+              "log": "",
+              "rclone_version": "1.75.2",
+              "reason": "Bisync critical error"
+            },
+            "last_dry_run": null,
+            "dry_run_newer": false,
+            "log": null,
+            "holds": [],
+            "pending": {
+              "state": "needs-resync",
+              "detail": "bisync stopped on a critical error: path1 and path2 are out of sync"
+            }
+          }
+        ]
+      },
+      {
+        "name": "empty",
+        "source": "/Users/bora/Empty",
+        "source_volume": null,
+        "run_lock": null,
+        "destinations": []
+      }
+    ]
+  },
+  "error": null
+}

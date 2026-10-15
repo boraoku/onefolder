@@ -1,0 +1,22 @@
+---
+source: src/ui/menu.rs
+expression: value
+---
+"                                        "
+"  OneFolder                             "
+"                                        "
+"  ⚙ rclone 1.75.2 · 2 accounts…         "
+"                                        "
+"    Run a job    last: documents ✓ 2h…  "
+"  ➤ Jobs         3 jobs · 4…            "
+"    Accounts     2 accounts…            "
+"    Status       needs a look: notes    "
+"    Doctor       checks rclone…         "
+"    Quit                                "
+"                                        "
+"  ↑↓ j/k move · enter select · ? keys…  "
+"                                        "
+"                                        "
+"                                        "
+"                                        "
+"                                        "

@@ -1,0 +1,32 @@
+{"time":"2026-10-13T19:56:46.083966+11:00","level":"info","msg":"Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set.","source":"bisync/compare.go:90"}
+{"time":"2026-10-13T19:56:46.084121+11:00","level":"info","msg":"Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType1\": 0,\n\t\"HashType2\": 0,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n","source":"bisync/compare.go:108"}
+{"time":"2026-10-13T19:56:46.084445+11:00","level":"info","msg":"Synching Path1 \"/fixture/ba/src/\" with Path2 \"/fixture/ba/dst/\"","source":"bisync/operations.go:238"}
+{"time":"2026-10-13T19:56:46.084472+11:00","level":"info","msg":"Building Path1 and Path2 listings","source":"bisync/operations.go:310"}
+{"time":"2026-10-13T19:56:46.085168+11:00","level":"info","msg":"Path1 checking for diffs","source":"bisync/operations.go:320"}
+{"time":"2026-10-13T19:56:46.08523+11:00","level":"info","msg":"- Path1             File was deleted                            - Notes/plan.conflict-2026-10-13-1.md","source":"bisync/deltas.go:188"}
+{"time":"2026-10-13T19:56:46.085246+11:00","level":"info","msg":"- Path1             File changed: size (larger)                 - Notes/plan.md","source":"bisync/deltas.go:232"}
+{"time":"2026-10-13T19:56:46.085265+11:00","level":"info","msg":"Path1:    2 changes:    0 new,    1 modified,    1 deleted","source":"bisync/deltas.go:126"}
+{"time":"2026-10-13T19:56:46.085276+11:00","level":"info","msg":"(Modified:    1 larger,    0 smaller)","source":"bisync/deltas.go:145"}
+{"time":"2026-10-13T19:56:46.085287+11:00","level":"info","msg":"Path2 checking for diffs","source":"bisync/operations.go:328"}
+{"time":"2026-10-13T19:56:46.08535+11:00","level":"info","msg":"- Path2             File was deleted                            - Notes/plan.conflict-2026-10-13-1.md","source":"bisync/deltas.go:188"}
+{"time":"2026-10-13T19:56:46.085363+11:00","level":"info","msg":"- Path2             File changed: size (larger)                 - Notes/plan.md","source":"bisync/deltas.go:232"}
+{"time":"2026-10-13T19:56:46.085377+11:00","level":"info","msg":"Path2:    2 changes:    0 new,    1 modified,    1 deleted","source":"bisync/deltas.go:126"}
+{"time":"2026-10-13T19:56:46.085386+11:00","level":"info","msg":"(Modified:    1 larger,    0 smaller)","source":"bisync/deltas.go:145"}
+{"time":"2026-10-13T19:56:46.085395+11:00","level":"info","msg":"Applying changes","source":"bisync/operations.go:381"}
+{"time":"2026-10-13T19:56:46.085491+11:00","level":"notice","msg":"- WARNING           New or changed in both paths                - Notes/plan.md","source":"bisync/deltas.go:391"}
+{"time":"2026-10-13T19:56:46.085507+11:00","level":"info","msg":"The winner is: Path1","object":"Notes/plan.md","objectType":"string","source":"bisync/resolve.go:143"}
+{"time":"2026-10-13T19:56:46.085522+11:00","level":"notice","msg":"- Path1             Not renaming Path1 copy, as it was determined the winner - /fixture/ba/src/Notes/plan.md","source":"bisync/resolve.go:314"}
+{"time":"2026-10-13T19:56:46.085536+11:00","level":"notice","msg":"- Path1             Queue copy to Path2                         - /fixture/ba/dst/Notes/plan.md","source":"bisync/resolve.go:329"}
+{"time":"2026-10-13T19:56:46.085547+11:00","level":"notice","msg":"- Path2             Renaming Path2 copy                         - /fixture/ba/dst/Notes/plan.race-conflict-2026-10-13-1.md","source":"bisync/resolve.go:318"}
+{"time":"2026-10-13T19:56:46.085687+11:00","level":"info","msg":"Moved (server-side) to: Notes/plan.race-conflict-2026-10-13-1.md","object":"Notes/plan.md","objectType":"*local.Object","source":"operations/operations.go:493"}
+{"time":"2026-10-13T19:56:46.085717+11:00","level":"notice","msg":"- Path2             Queue copy to Path1                         - /fixture/ba/src/Notes/plan.race-conflict-2026-10-13-1.md","source":"bisync/resolve.go:329"}
+{"time":"2026-10-13T19:56:46.085736+11:00","level":"info","msg":"- Path2             Do queued copies to                         - Path1","source":"bisync/deltas.go:487"}
+{"time":"2026-10-13T19:56:46.086507+11:00","level":"info","msg":"Copied (server-side copy)","size":46,"object":"Notes/plan.race-conflict-2026-10-13-1.md","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.086573+11:00","level":"info","msg":"Set directory modification time (using SetModTime)","object":"Notes","objectType":"*local.Directory","source":"operations/operations.go:2782"}
+{"time":"2026-10-13T19:56:46.086677+11:00","level":"info","msg":"- Path1             Do queued copies to                         - Path2","source":"bisync/deltas.go:503"}
+{"time":"2026-10-13T19:56:46.087219+11:00","level":"info","msg":"Copied (server-side copy)","size":29,"object":"Notes/plan.md","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.087261+11:00","level":"info","msg":"Set directory modification time (using SetModTime)","object":"Notes","objectType":"*local.Directory","source":"operations/operations.go:2782"}
+{"time":"2026-10-13T19:56:46.087304+11:00","level":"info","msg":"Updating listings","source":"bisync/operations.go:395"}
+{"time":"2026-10-13T19:56:46.08822+11:00","level":"info","msg":"Validating listings for Path1 \"/fixture/ba/src/\" vs Path2 \"/fixture/ba/dst/\"","source":"bisync/operations.go:434"}
+{"time":"2026-10-13T19:56:46.088335+11:00","level":"info","msg":"Bisync successful","source":"bisync/operations.go:218"}
+{"time":"2026-10-13T19:56:46.088363+11:00","level":"notice","msg":"\nTransferred:   \t        121 B / 121 B, 100%, 0 B/s, ETA -\nChecks:                28 / 28, 100%, Listed 38\nRenamed:                1\nTransferred:            3 / 3, 100%\nServer Side Copies:     2 @ 75 B\nServer Side Moves:      1 @ 46 B\nElapsed time:         0.0s\n\n","stats":{"bytes":121,"checks":28,"deletedDirs":0,"deletes":0,"elapsedTime":0.003842416,"errors":0,"eta":null,"fatalError":false,"listed":38,"renames":1,"retryError":false,"serverSideCopies":2,"serverSideCopyBytes":75,"serverSideMoveBytes":46,"serverSideMoves":1,"speed":0,"totalBytes":121,"totalChecks":28,"totalTransfers":3,"transferTime":0.000935044,"transfers":3},"source":"accounting/stats.go:549"}

@@ -1,0 +1,22 @@
+---
+source: src/ui/progress.rs
+expression: value
+---
+"                                                                                "
+"  Run documents                                                                 "
+"                                                                                "
+"  → work:Backups/Documents   one-way   destination 1 of 2                       "
+"                                                                                "
+"    Previewing · 2m 14s                                                         "
+"    ⠋ checked 12,408 · listed 31,220 · to copy 1,204 files, 3.2 GB              "
+"      destination 18,330 files listed so far                                    "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  ctrl-c stop                                                                   "
+"                                                                                "

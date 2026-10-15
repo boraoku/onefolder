@@ -1,0 +1,32 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist' (cargo-dist), which builds the release binaries, the
+# installers and the Homebrew formula on GitHub Actions when a version tag
+# is pushed. Regenerate the workflow after editing with: dist generate
+[dist]
+# The version of dist to use for generating installers and CI scripts
+cargo-dist-version = "0.33.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "homebrew"]
+# The Homebrew tap the formula is pushed to.
+tap = "boraoku/homebrew-onefolder"
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
+# Publish jobs to run in CI: the formula to the tap, and the universal
+# macOS binary made from the two builds (.github/workflows/publish-universal.yml)
+publish-jobs = ["homebrew", "./publish-universal"]
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Whether to install an updater program (axoupdater, a later milestone)
+install-updater = false
+# Run `dist plan` on pull requests, so a broken release config fails early
+pr-run-mode = "plan"
+# The universal job uploads to the release, so it needs to write contents.
+github-custom-job-permissions = { "publish-universal" = { contents = "write" } }
+
+# The Homebrew formula installs rclone too: OneFolder needs it on PATH.
+[dist.dependencies.homebrew]
+rclone = { stage = ["run"] }

@@ -1,0 +1,31 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "kept.txt",
+    "size": 2,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "stats",
+    "bytes": 2,
+    "totalBytes": 2,
+    "transfers": 1,
+    "totalTransfers": 1,
+    "checks": 0,
+    "totalChecks": 0,
+    "listed": 2,
+    "errors": 0,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": null,
+    "transferring": []
+  }
+]

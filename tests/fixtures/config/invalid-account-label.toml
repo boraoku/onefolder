@@ -1,0 +1,5 @@
+version = 1
+[[accounts]]
+label = "Work Account"
+remote = "onefolder-Work Account"
+drive_type = "business"

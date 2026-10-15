@@ -1,0 +1,341 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set."
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType#\": #,\n\t\"HashType#\": #,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Synching Path# \"/fixture/ba/src/\" with Path# \"/fixture/ba/dst/\""
+  },
+  {
+    "event": "phase",
+    "phase": "listing"
+  },
+  {
+    "event": "phase",
+    "phase": "checking"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "changed",
+    "path": "Notes/plan.md",
+    "detail": "size (larger)"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "del.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "changed",
+    "path": "mod.txt",
+    "detail": "size (larger)"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "sub"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "sub/deep"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "sub/deep/d.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "sub/f1.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "sub/f2.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "sub/f3.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "new",
+    "path": "newlocal.txt"
+  },
+  {
+    "event": "changes",
+    "side": "path1",
+    "changes": 10,
+    "new": 1,
+    "modified": 2,
+    "deleted": 7
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "(Modified:    # larger,    # smaller)"
+  },
+  {
+    "event": "phase",
+    "phase": "checking"
+  },
+  {
+    "event": "plan",
+    "side": "path2",
+    "verb": "deleted",
+    "path": "Notes/plan.md"
+  },
+  {
+    "event": "plan",
+    "side": "path2",
+    "verb": "deleted",
+    "path": "rdel.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path2",
+    "verb": "changed",
+    "path": "rmod.txt",
+    "detail": "size (larger)"
+  },
+  {
+    "event": "plan",
+    "side": "path2",
+    "verb": "new",
+    "path": "newremote.txt"
+  },
+  {
+    "event": "changes",
+    "side": "path2",
+    "changes": 4,
+    "new": 1,
+    "modified": 1,
+    "deleted": 2
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "(Modified:    # larger,    # smaller)"
+  },
+  {
+    "event": "phase",
+    "phase": "applying"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "copy",
+    "path": "/fixture/ba/dst/Notes/plan.md"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/ba/dst/del.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "copy",
+    "path": "/fixture/ba/dst/mod.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "copy",
+    "path": "/fixture/ba/dst/newlocal.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/ba/dst/sub"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/ba/dst/sub/deep"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/ba/dst/sub/deep/d.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/ba/dst/sub/f1.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/ba/dst/sub/f2.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/ba/dst/sub/f3.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path1",
+    "action": "copy",
+    "path": "/fixture/ba/src/newremote.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path1",
+    "action": "delete",
+    "path": "/fixture/ba/src/rdel.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path1",
+    "action": "copy",
+    "path": "/fixture/ba/src/rmod.txt"
+  },
+  {
+    "event": "applying",
+    "to": "path1"
+  },
+  {
+    "event": "deleted",
+    "object": "rdel.txt"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "newremote.txt",
+    "size": 10,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "rmod.txt",
+    "size": 13,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "applying",
+    "to": "path2"
+  },
+  {
+    "event": "deleted",
+    "object": "del.txt"
+  },
+  {
+    "event": "deleted",
+    "object": "sub/deep/d.txt"
+  },
+  {
+    "event": "deleted",
+    "object": "sub/f1.txt"
+  },
+  {
+    "event": "deleted",
+    "object": "sub/f2.txt"
+  },
+  {
+    "event": "deleted",
+    "object": "sub/f3.txt"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Set directory modification time (using SetModTime)",
+    "object": "Notes"
+  },
+  {
+    "event": "removed-dir",
+    "object": "sub"
+  },
+  {
+    "event": "removed-dir",
+    "object": "sub/deep"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "Notes/plan.md",
+    "size": 15,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "mod.txt",
+    "size": 12,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "newlocal.txt",
+    "size": 9,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "phase",
+    "phase": "updating"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Validating listings for Path# \"/fixture/ba/src/\" vs Path# \"/fixture/ba/dst/\""
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisync successful"
+  },
+  {
+    "event": "stats",
+    "bytes": 59,
+    "totalBytes": 59,
+    "transfers": 5,
+    "totalTransfers": 5,
+    "checks": 41,
+    "totalChecks": 41,
+    "listed": 57,
+    "errors": 0,
+    "deletes": 6,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": null,
+    "transferring": []
+  }
+]

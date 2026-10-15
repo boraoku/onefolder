@@ -1,0 +1,2 @@
+[onefolder-nope]
+# couldn't find type of fs for "onefolder-nope"

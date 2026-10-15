@@ -1,0 +1,29 @@
+---
+source: src/jsonout/accounts.rs
+assertion_line: 140
+expression: value
+---
+{
+  "onefolder": "[version]",
+  "command": "accounts list",
+  "ok": true,
+  "data": [
+    {
+      "label": "work",
+      "remote": "onefolder-work",
+      "drive_type": "business",
+      "delta": false,
+      "added": "2026-10-13T09:40:00+11:00",
+      "remote_exists": true
+    },
+    {
+      "label": "home",
+      "remote": "onefolder-home",
+      "drive_type": "personal",
+      "delta": true,
+      "added": null,
+      "remote_exists": false
+    }
+  ],
+  "error": null
+}

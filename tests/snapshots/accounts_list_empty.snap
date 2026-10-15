@@ -1,0 +1,7 @@
+---
+source: src/ui/accounts.rs
+expression: "render_list(&[], None, false)"
+---
+Accounts  0 accounts
+
+  ◎ none yet · add one with: onefolder accounts add

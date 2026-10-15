@@ -1,0 +1,11 @@
+---
+source: src/ui/summary.rs
+expression: "render_tui(&two_way(), 80)"
+---
+"======================================================================          "
+"documents → work:Backups/Documents   two-way   complete                         "
+"Added: 14 to OneDrive, 2 to Mac | Updated: 3 | Deleted: 0 on OneDrive, 1 on Mac "
+"Transferred: 312.4 MB in 1m 38s (3.2 MB/s) | Errors: 1                          "
+"  ✗ Projects/2024/old.mov   OneDrive: file too large (250 GiB limit)            "
+"Log: ~/.local/share/onefolder/logs/documents/d-7f3a/2026-10-13T094102.jsonl     "
+"======================================================================          "

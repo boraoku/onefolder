@@ -1,0 +1,13 @@
+---
+source: src/jsonout/run.rs
+expression: text
+---
+{"event":"start","job":"documents","destination":"d-7f3a","type":"onedrive","display":"work:Backups/Documents","mode":"two-way","index":1,"of":1,"dry_run":false}
+{"event":"step","job":"documents","destination":"d-7f3a","step":"planning"}
+{"event":"phase","job":"documents","destination":"d-7f3a","phase":"listing"}
+{"event":"resync","job":"documents","destination":"d-7f3a","reason":"first-run","detail":null,"destination_missing":false,"to_destination":{"files":1,"bytes":6,"new":["new.txt"],"changed":[]},"to_local":{"files":0,"bytes":0,"new":[],"changed":[]},"kept":[{"path":"mod.txt","kept_as":"mod.conflict-2026-10-13-1.txt"}]}
+{"event":"folder_prompt","job":"documents","destination":"d-7f3a","path":"Old projects/2019","files":2,"bytes":20,"measured":true,"maybe_rename":false,"answer":"keep","by":"default"}
+{"event":"plan","job":"documents","destination":"d-7f3a","to_destination":{"files":1,"bytes":6,"new":["new.txt"],"changed":[]},"to_local":{"files":0,"bytes":0,"new":[],"changed":[]},"delete_destination":[],"delete_local":["gone.txt"],"conflicts":[{"path":"Notes/plan.md","kept_as":"Notes/plan.conflict-2026-10-13-1.md"}],"folders":[],"needs_confirmation":[],"lift_max_delete":false,"force":false,"excludes":[],"copy_hidden":false,"effective_excludes":[],"holds":["Archive"]}
+{"event":"step","job":"documents","destination":"d-7f3a","step":"syncing"}
+{"event":"file","job":"documents","destination":"d-7f3a","path":"gone.txt","size":null,"change":"deleted","side":"local"}
+{"event":"conflict","job":"documents","destination":"d-7f3a","path":"Notes/plan.md","kept_as":"Notes/plan.conflict-2026-10-13-1.md"}

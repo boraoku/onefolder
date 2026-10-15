@@ -1,0 +1,225 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set."
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType#\": #,\n\t\"HashType#\": #,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Synching Path# \"/fixture/ba/src/\" with Path# \"/fixture/ba/dst/\""
+  },
+  {
+    "event": "phase",
+    "phase": "resyncing"
+  },
+  {
+    "event": "applying",
+    "to": "path1"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "only-on-destination.txt",
+    "size": 10,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "applying",
+    "to": "path2"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Made directory with metadata (mtime=#-#-#T#:#:#.#<offset>)",
+    "object": "sub"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Made directory with metadata (mtime=#-#-#T#:#:#.#<offset>)",
+    "object": "sub/deep"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Made directory with metadata (mtime=#-#-#T#:#:#.#<offset>)",
+    "object": "keep"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Made directory with metadata (mtime=#-#-#T#:#:#.#<offset>)",
+    "object": "Notes"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Set directory modification time (using SetModTime)",
+    "object": "Notes"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Set directory modification time (using SetModTime)",
+    "object": "keep"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Set directory modification time (using SetModTime)",
+    "object": "sub"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Set directory modification time (using SetModTime)",
+    "object": "sub/deep"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "Notes/plan.md",
+    "size": 8,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "del.txt",
+    "size": 2,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "keep/k1.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "keep/k2.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "keep/k3.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "keep/k4.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "keep/k5.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "keep/k6.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "mod.txt",
+    "size": 2,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "rdel.txt",
+    "size": 2,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "rmod.txt",
+    "size": 3,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "sub/deep/d.txt",
+    "size": 5,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "sub/f1.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "sub/f2.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "sub/f3.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "phase",
+    "phase": "updating"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Validating listings for Path# \"/fixture/ba/src/\" vs Path# \"/fixture/ba/dst/\""
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisync successful"
+  },
+  {
+    "event": "stats",
+    "bytes": 95,
+    "totalBytes": 95,
+    "transfers": 16,
+    "totalTransfers": 16,
+    "checks": 3,
+    "totalChecks": 3,
+    "listed": 43,
+    "errors": 0,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": null,
+    "transferring": []
+  }
+]

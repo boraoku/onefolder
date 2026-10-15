@@ -1,0 +1,42 @@
+---
+source: src/cli/doctor.rs
+expression: "scrub(&text, root.path())"
+---
+Doctor
+
+➤ rclone
+  ✓ /opt/homebrew/bin/rclone · 1.75.2
+      (minimum 1.66)
+      rclone 1.76.0 is available ·
+          update with: brew upgrade
+          rclone
+
+➤ Accounts
+  ◎ none yet · add one with: onefolder
+      accounts add
+
+➤ Jobs
+  ◎ documents-with-a-long-name   source
+      ok
+      ◎ stale run lock left by process
+          4242, started 13 Oct 2026
+          09:41; the next run removes it
+      ◎ …/Documents/2026    not mounted
+          (expects volume "Backup")
+
+➤ Data
+  ◎ config …fig/onefolder/config.toml
+      not created yet, it appears when
+      you add an account or a job
+  ◎ state /srv/h…/onefolder/state.json
+      not created yet, it is written
+      after the first run
+  ✓ data …cal/share/onefolder writable
+  ✓ logs 48 logs, 0 B · onefolder doctor
+      --prune-logs removes 3 (older than
+      90 days, or beyond the newest 50
+      of a destination)
+
+========================================
+0 problems · 0 warnings
+========================================

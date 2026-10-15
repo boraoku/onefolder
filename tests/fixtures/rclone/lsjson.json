@@ -1,0 +1,6 @@
+[
+{"Path":"only-on-destination.txt","Name":"only-on-destination.txt","Size":10,"MimeType":"text/plain; charset=utf-8","ModTime":"2026-10-13T19:56:40.225368810+11:00","IsDir":false},
+{"Path":"same.txt","Name":"same.txt","Size":5,"MimeType":"text/plain; charset=utf-8","ModTime":"2026-10-13T19:56:40.199663732+11:00","IsDir":false},
+{"Path":"touched.txt","Name":"touched.txt","Size":8,"MimeType":"text/plain; charset=utf-8","ModTime":"2020-01-01T00:00:00.000000000+11:00","IsDir":false},
+{"Path":"Projects/2026/budget.xlsx","Name":"budget.xlsx","Size":18,"MimeType":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","ModTime":"2026-10-13T19:56:40.223098015+11:00","IsDir":false}
+]

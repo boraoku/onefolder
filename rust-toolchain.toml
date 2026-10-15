@@ -1,0 +1,6 @@
+[toolchain]
+# Pinned to the stable release the code was last checked with, so a new
+# clippy lint cannot break CI on its own. Move it forward deliberately.
+channel = "1.93.1"
+components = ["rustfmt", "clippy"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]

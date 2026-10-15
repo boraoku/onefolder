@@ -1,0 +1,26 @@
+---
+source: src/ui/jobform.rs
+expression: value
+---
+"                                                                                                                        "
+"  Edit documents                                                                                                        "
+"                                                                                                                        "
+"  ➤ Name               documents                                                                                        "
+"                       Renaming takes its run logs and sync state with it                                               "
+"    Source             /usr  ✓ folder exists                                                                            "
+"    Excludes           .DS_Store                                                                                        "
+"    Copy hidden files  ● No  ○ Yes                                                                                      "
+"    Destinations                                                                                                        "
+"        → work:Docs                       two-way                                                                       "
+"        → /Volumes/Backup/Documents       one-way  volume "Backup"                                                      "
+"        + add a destination                                                                                             "
+"    Save job                                                                                                            "
+"    Cancel                                                                                                              "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"  tab ↑↓ move · enter edit · ctrl-s save · esc cancel                                                                   "
+"                                                                                                                        "

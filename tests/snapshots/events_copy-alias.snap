@@ -1,0 +1,71 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Set directory modification time (using DirSetModTime)",
+    "object": "Projects"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Set directory modification time (using DirSetModTime)",
+    "object": "Projects/2026"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "Projects/2026/brief.docx",
+    "size": 6,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "Projects/2026/budget.xlsx",
+    "size": 10,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "new.txt",
+    "size": 6,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "same.txt",
+    "size": 5,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "touched.txt",
+    "size": 8,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "stats",
+    "bytes": 35,
+    "totalBytes": 35,
+    "transfers": 5,
+    "totalTransfers": 5,
+    "checks": 0,
+    "totalChecks": 0,
+    "listed": 8,
+    "errors": 0,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": null,
+    "transferring": []
+  }
+]

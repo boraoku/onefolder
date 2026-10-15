@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Lint and test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Formatting
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      # rclone is installed only in the integration job, and the accounts
+      # tests refuse to skip under CI, so they run there instead.
+      - name: Unit, snapshot and CLI tests
+        run: cargo test --bins --test cli
+
+  integration:
+    name: Integration (rclone)
+    runs-on: macos-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Install rclone and just
+        run: brew install rclone just
+      - name: rclone version
+        run: rclone version
+      - name: Accounts tests (alias remote, fake sign-in under a pseudo-terminal)
+        run: cargo test --test accounts
+      - name: Integration tests
+        run: just test-integration
+      # Re-records the rclone fixtures with this rclone and checks the
+      # decoder's snapshots without updating them, so a release that changes
+      # rclone's log lines fails here rather than in a user's run.
+      - name: Fixtures still decode the same
+        run: just fixtures
+
+  release-plan:
+    name: Release plan (dist)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - name: Install dist
+        shell: bash
+        run: "curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.33.0/cargo-dist-installer.sh | sh"
+      # Fails when dist-workspace.toml, Cargo.toml and release.yml disagree
+      # (run `dist generate` after changing the dist config).
+      - name: dist plan
+        run: dist plan
+      - name: Release workflow is up to date
+        run: dist generate --check

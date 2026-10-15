@@ -1,0 +1,7 @@
+version = 1
+[[jobs]]
+name = "documents"
+source = "/a"
+[[jobs]]
+name = "documents"
+source = "/b"

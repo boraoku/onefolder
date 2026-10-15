@@ -1,0 +1,19 @@
+---
+source: src/jsonout/run.rs
+expression: text
+---
+{"event":"start","job":"documents","destination":"d-91c0","type":"local","display":"/Volumes/Backup/Documents","mode":"one-way","index":1,"of":2,"dry_run":false}
+{"event":"step","job":"documents","destination":"d-91c0","step":"previewing"}
+{"event":"progress","job":"documents","destination":"d-91c0","step":"previewing","elapsed":2,"checked":3,"listed":9,"to_copy":{"files":1,"bytes":6},"destination_listed":4,"destination_done":false,"still_listing":false}
+{"event":"preview","job":"documents","destination":"d-91c0","new":{"files":1,"bytes":6,"paths":["new.txt"]},"changed":{"files":0,"bytes":0,"paths":[]},"unchanged":3,"destination_only":1,"excludes":["node_modules/**"],"copy_hidden":false,"effective_excludes":[".DS_Store","._*",".localized",".Spotlight-V100/**",".Trashes/**",".fseventsd/**",".TemporaryItems/**",".DocumentRevisions-V100/**","[Tt]humbs.db","[Ee]hthumbs.db","[Ee]hthumbs_vista.db","[Dd]esktop.ini","$RECYCLE.BIN/**","System Volume Information/**",".*",".*/**","node_modules/**"],"moves":{"count":0,"bytes":0,"choice":"undecided","pairs":[],"groups":[]}}
+{"event":"step","job":"documents","destination":"d-91c0","step":"copying"}
+{"event":"stats","job":"documents","destination":"d-91c0","bytes":3,"total_bytes":6,"transfers":0,"total_transfers":1,"checks":0,"total_checks":0,"errors":0,"speed":1.5,"eta":2.0,"elapsed":1.0,"transferring":[{"name":"new.txt","bytes":3,"size":6,"percentage":50.0}]}
+{"event":"file","job":"documents","destination":"d-91c0","path":"new.txt","size":6,"change":"added","side":"destination"}
+{"event":"error","job":"documents","destination":"d-91c0","path":"locked.txt","message":"permission denied"}
+{"event":"stopping","job":"documents","destination":"d-91c0"}
+{"event":"problem","job":"documents","destination":"d-91c0","message":"Backup drive not mounted\n  Plug it in."}
+{"event":"note","job":"documents","destination":"d-91c0","message":"Nothing to copy."}
+{"event":"summary","job":"documents","destination":"d-91c0","summary":{"job":"documents","destination":"/Volumes/Backup/Documents","destination_type":"local","mode":"one-way","outcome":"partial","dry_run":false,"added":{"local":0,"remote":1},"updated":{"local":0,"remote":0},"deleted":{"local":0,"remote":0},"unchanged":3,"bytes":6,"duration_ms":1200,"errors":[{"path":"locked.txt","reason":"permission denied"}],"conflicts":[],"destination_only":1,"log":"~/.local/share/onefolder/logs/documents/d-91c0/2026-10-13T094102.jsonl"}}
+{"event":"skipped","job":"documents","destination":"d-7f3a","reason":"not confirmed, nothing synced"}
+{"event":"done","job":"documents","ok":false,"exit_code":1,"destinations":[{"destination":"d-91c0","outcome":"partial","reason":null},{"destination":"d-7f3a","outcome":"skipped","reason":"not confirmed, nothing synced"}]}
+{"event":"refused","code":"needs-yes","message":"add --yes"}

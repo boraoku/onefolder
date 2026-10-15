@@ -1,0 +1,8 @@
+version = 1
+[[jobs]]
+name = "documents"
+source = "/a"
+[[jobs.destinations]]
+id = "backup"
+type = "local"
+path = "/tmp/b"

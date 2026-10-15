@@ -1,0 +1,5 @@
+[onefolder-work]
+type = onedrive
+token = {"access_token":"REDACTED","token_type":"Bearer","refresh_token":"REDACTED","expiry":"2026-10-13T10:41:02.123456+11:00"}
+drive_id = b!REDACTED-business-drive-id
+drive_type = business

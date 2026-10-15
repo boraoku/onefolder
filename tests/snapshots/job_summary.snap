@@ -1,0 +1,10 @@
+---
+source: src/ui/summary.rs
+expression: "render_job_summary(\"documents\", false, &dests, false, None)"
+---
+======================================================================
+documents   3 destinations · 1 ok · 1 failed · 1 skipped
+  ✓ work:Backups/Documents      two-way   ok
+  ✗ /Volumes/Backup/Documents   one-way   failed · Backup drive not mounted
+  ◎ personal:Docs               one-way   skipped · not run, the run was stopped
+======================================================================

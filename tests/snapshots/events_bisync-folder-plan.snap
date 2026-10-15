@@ -1,0 +1,228 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set."
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType#\": #,\n\t\"HashType#\": #,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Synching Path# \"/fixture/bc/src/\" with Path# \"/fixture/bc/dst/\""
+  },
+  {
+    "event": "phase",
+    "phase": "listing"
+  },
+  {
+    "event": "phase",
+    "phase": "checking"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "Old projects/2019"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "Old projects/2019/a b.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "Old projects/2019/c.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "Old projects/2019/drafts"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "Old projects/2019/drafts/d.txt"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "Photos/p1.jpg"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "deleted",
+    "path": "Photos/p2.jpg"
+  },
+  {
+    "event": "plan",
+    "side": "path1",
+    "verb": "new",
+    "path": "elsewhere.txt"
+  },
+  {
+    "event": "changes",
+    "side": "path1",
+    "changes": 8,
+    "new": 1,
+    "modified": 0,
+    "deleted": 7
+  },
+  {
+    "event": "phase",
+    "phase": "checking"
+  },
+  {
+    "event": "phase",
+    "phase": "applying"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/bc/dst/Old projects/2019"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/bc/dst/Old projects/2019/a b.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/bc/dst/Old projects/2019/c.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/bc/dst/Old projects/2019/drafts"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/bc/dst/Old projects/2019/drafts/d.txt"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/bc/dst/Photos/p1.jpg"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "delete",
+    "path": "/fixture/bc/dst/Photos/p2.jpg"
+  },
+  {
+    "event": "queued",
+    "on": "path2",
+    "action": "copy",
+    "path": "/fixture/bc/dst/elsewhere.txt"
+  },
+  {
+    "event": "applying",
+    "to": "path2"
+  },
+  {
+    "event": "skipped",
+    "action": "copy",
+    "object": "elsewhere.txt",
+    "size": 6,
+    "is_dir": false
+  },
+  {
+    "event": "skipped",
+    "action": "delete",
+    "object": "Old projects/2019/a b.txt",
+    "size": 2,
+    "is_dir": false
+  },
+  {
+    "event": "skipped",
+    "action": "delete",
+    "object": "Old projects/2019/c.txt",
+    "size": 2,
+    "is_dir": false
+  },
+  {
+    "event": "skipped",
+    "action": "delete",
+    "object": "Old projects/2019/drafts/d.txt",
+    "size": 2,
+    "is_dir": false
+  },
+  {
+    "event": "skipped",
+    "action": "delete",
+    "object": "Photos/p1.jpg",
+    "size": 8,
+    "is_dir": false
+  },
+  {
+    "event": "skipped",
+    "action": "delete",
+    "object": "Photos/p2.jpg",
+    "size": 8,
+    "is_dir": false
+  },
+  {
+    "event": "skipped",
+    "action": "remove directory",
+    "object": "Old projects/2019",
+    "size": null,
+    "is_dir": false
+  },
+  {
+    "event": "skipped",
+    "action": "remove directory",
+    "object": "Old projects/2019/drafts",
+    "size": null,
+    "is_dir": false
+  },
+  {
+    "event": "phase",
+    "phase": "updating"
+  },
+  {
+    "event": "notice",
+    "level": "info",
+    "message": "Bisync successful"
+  },
+  {
+    "event": "stats",
+    "bytes": 6,
+    "totalBytes": 6,
+    "transfers": 1,
+    "totalTransfers": 1,
+    "checks": 43,
+    "totalChecks": 43,
+    "listed": 57,
+    "errors": 0,
+    "deletes": 5,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": null,
+    "transferring": []
+  }
+]

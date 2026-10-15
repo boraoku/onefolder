@@ -1,0 +1,5 @@
+version = 1
+[[accounts]]
+label = "work"
+remote = "work"
+drive_type = "business"

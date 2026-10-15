@@ -1,0 +1,22 @@
+---
+source: src/ui/menu.rs
+expression: value
+---
+"                                                                                "
+"  OneFolder                                                                     "
+"                                                                                "
+"  ⚙ rclone 1.75.2 · 2 accounts · 3 jobs · last run 2h ago                       "
+"                                                                                "
+"    Run a job    last: documents ✓ 2h ago                                       "
+"  ➤ Jobs         3 jobs · 4 destinations · 1 drive not mounted                  "
+"    Accounts     2 accounts · all in rclone's config                            "
+"    Status       needs a look: notes                                            "
+"    Doctor       checks rclone, accounts and drives · 48 logs, 12.4 MB · 3 to…  "
+"    Quit                                                                        "
+"                                                                                "
+"  ↑↓ j/k move · enter select · ? keys · q quit                                  "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "

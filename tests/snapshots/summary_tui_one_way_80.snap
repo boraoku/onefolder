@@ -1,0 +1,12 @@
+---
+source: src/ui/summary.rs
+assertion_line: 379
+expression: "render_tui(&one_way(), 80)"
+---
+"======================================================================          "
+"documents → /Volumes/Backup/Documents   one-way   dry run                       "
+"Added: 37 | Updated: 5 | Deleted: 0 (one-way never deletes)                     "
+"Would transfer: 430.8 MB | Unchanged: 981 | Errors: 0                           "
+"Left alone: 12 files only on the destination (one-way does not mirror)          "
+"Log: ~/.local/share/onefolder/logs/documents/d-91c0/2026-10-13T094500.jsonl     "
+"======================================================================          "

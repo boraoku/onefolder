@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Hand-made: an exFAT drive on a GPT disk: no VolumeUUID, but the partition has a DiskUUID. -->
+<plist version="1.0">
+<dict>
+	<key>BusProtocol</key>
+	<string>USB</string>
+	<key>DeviceIdentifier</key>
+	<string>disk4s1</string>
+	<key>DeviceNode</key>
+	<string>/dev/disk4s1</string>
+	<key>DiskUUID</key>
+	<string>7C3457EF-0000-11AA-AA11-00306543ECAC</string>
+	<key>Ejectable</key>
+	<true/>
+	<key>FilesystemName</key>
+	<string>ExFAT</string>
+	<key>FilesystemType</key>
+	<string>exfat</string>
+	<key>Internal</key>
+	<false/>
+	<key>MountPoint</key>
+	<string>/Volumes/BACKUP</string>
+	<key>Removable</key>
+	<true/>
+	<key>RemovableMediaOrExternalDevice</key>
+	<true/>
+	<key>VolumeName</key>
+	<string>BACKUP</string>
+	<key>Writable</key>
+	<true/>
+	<key>WritableMedia</key>
+	<true/>
+	<key>WritableVolume</key>
+	<true/>
+</dict>
+</plist>

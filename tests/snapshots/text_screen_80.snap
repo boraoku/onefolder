@@ -1,0 +1,16 @@
+---
+source: src/ui/session.rs
+expression: value
+---
+"  line 46                                                                       "
+"  line 47                                                                       "
+"  line 48                                                                       "
+"  line 49                                                                       "
+"  line 50                                                                       "
+"  ======================================================================        "
+"  ✓ documents → /Volumes/Backup/Documents   ok                                  "
+"    Log: ~/.local/share/onefolder/logs/documents/d-7f3a/2026-10-15T10-00-00.json"
+"  l                                                                             "
+"  ======================================================================        "
+"                                                                                "
+"  esc back · ↑↓ pgup/pgdn scroll · g/G top/bottom                               "

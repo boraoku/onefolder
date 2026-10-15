@@ -1,0 +1,28 @@
+version = 1
+
+[[accounts]]
+label      = "work"                 # what the user sees; unique
+remote     = "onefolder-work"       # rclone remote name, always "onefolder-" + label
+drive_type = "business"             # personal | business
+added      = 2026-10-13T09:40:00+11:00
+
+[[jobs]]
+name     = "documents"              # unique; used on the command line
+source   = "/Users/bora/Documents"  # must be absolute and readable
+excludes = [".DS_Store", "node_modules/**", "*.tmp"]   # rclone filter syntax
+
+  [[jobs.destinations]]
+  id      = "d-7f3a"                # stable short id; names log and bisync directories
+  type    = "onedrive"
+  account = "work"
+  path    = "Backups/Documents"     # relative to the drive root
+  mode    = "two-way"               # one-way | two-way
+
+  [[jobs.destinations]]
+  id          = "d-91c0"
+  type        = "local"
+  path        = "/Volumes/Backup/Documents"
+  mode        = "one-way"           # default for local destinations
+  volume_uuid = "A1B2C3D4-0000-4E5F-8A9B-000000000001"
+  volume_name = "Backup"
+  mount_point = "/Volumes/Backup"

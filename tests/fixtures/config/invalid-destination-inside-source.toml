@@ -1,0 +1,8 @@
+version = 1
+[[jobs]]
+name = "documents"
+source = "/Users/bora/Documents"
+[[jobs.destinations]]
+id = "d-0001"
+type = "local"
+path = "/Users/bora/Documents/Backup"

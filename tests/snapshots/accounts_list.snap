@@ -1,0 +1,12 @@
+---
+source: src/ui/accounts.rs
+expression: "render_list(&entries, None, false)"
+---
+Accounts  3 accounts
+
+  work         business   onefolder-work         added 13 Oct 2026
+  home         personal   onefolder-home         no date recorded · delta listing
+  old-laptop   personal   onefolder-old-laptop   added 13 Oct 2026   ✗ remote missing from rclone's config
+      run: onefolder accounts reconnect old-laptop
+
+onefolder accounts test · add · reconnect <label> · remove <label>

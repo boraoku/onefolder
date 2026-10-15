@@ -1,0 +1,27 @@
+---
+source: src/cli/doctor.rs
+expression: "scrub(&render(&report, false, None), root.path())"
+---
+Doctor
+
+➤ rclone
+  ✗ not found on PATH · install it with: brew install rclone
+
+➤ Accounts
+  ◎ not checked, the config does not load
+
+➤ Jobs
+  ◎ not checked, the config does not load
+
+➤ Data
+  ✗ config /TMP/config/config.toml does not load
+      2 problems to fix:
+        ✗ job name "Bad Name" must be lowercase letters, digits and dashes, starting with a letter or digit
+        ✗ job "Bad Name" has source "relative/path", which is not an absolute path
+  ◎ state /TMP/data/state.json not created yet, it is written after the first run
+  ✓ data /TMP/data writable
+  ✓ logs 0 logs, 0 B
+
+======================================================================
+2 problems · 0 warnings
+======================================================================

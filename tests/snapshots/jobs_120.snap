@@ -1,0 +1,20 @@
+---
+source: src/ui/jobs.rs
+expression: value
+---
+"                                                                                                                        "
+"  Jobs  3 jobs · 4 destinations                                                                                         "
+"                                                                                                                        "
+"    documents      ~/Documents                                                                                          "
+"        → work:Backups/Documents          two-way   ✓ 2h ago                                                            "
+"        → /Volumes/Backup/Documents       one-way   ◎ not mounted                                                       "
+"  ➤ photos         ~/Pictures/Photos                                                                                    "
+"        → personal:Photos                 one-way   ✓ yesterday                                                         "
+"    notes          ~/Notes                                                                                              "
+"        → work:Notes                      two-way   ✗ failed 3d ago · 2 held                                            "
+"                                                                                                                        "
+"                                                                                                                        "
+"  Remove job photos? Files and run logs are left where they are. y remove · any other key keeps it                      "
+"                                                                                                                        "
+"  enter run · a add · e edit · d remove · / filter · ? keys · q back                                                    "
+"                                                                                                                        "

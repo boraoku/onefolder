@@ -1,0 +1,58 @@
+[package]
+name = "onefolder"
+version = "0.1.0"
+edition = "2021"
+description = "Sync local folders to OneDrive and external drives with rclone, from a calm terminal app"
+publish = false
+license = "MIT"
+repository = "https://github.com/boraoku/onefolder"
+homepage = "https://github.com/boraoku/onefolder"
+keywords = ["rclone", "onedrive", "sync", "backup", "tui"]
+categories = ["command-line-utilities"]
+
+# Not for crates.io (the release is the binary), but still built by dist.
+[package.metadata.dist]
+dist = true
+
+[[bin]]
+name = "onefolder"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+clap_complete = "4.6.11"
+crossterm = "0.29.0"
+directories = "6.0.0"
+jiff = "0.2.38"
+ratatui = { version = "0.30.2", features = ["unstable-rendered-line-info"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+thiserror = "2.0.21"
+tokio = { version = "1.53.2", features = ["process", "io-util", "sync", "signal", "rt-multi-thread", "macros", "time"] }
+toml_edit = { version = "0.25.17", features = ["serde"] }
+tui-input = "0.15.5"
+unicode-normalization = "0.1.25"
+unicode-width = "0.2.2"
+
+# nix: the signal feature lets the runner send SIGINT to rclone on Ctrl-C;
+# the volume module uses its libc re-export, NixPath and Errno (see
+# src/volume/macos.rs for why statfs is called directly rather than through
+# nix's Statfs wrapper).
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31.3", features = ["signal"] }
+
+# Volume identity (statfs and `diskutil info -plist`) is macOS only.
+[target.'cfg(target_os = "macos")'.dependencies]
+plist = "1.10.1"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+insta = { version = "1.49.0", features = ["json"] }
+predicates = "3.1.4"
+tempfile = "3.27.0"
+
+# The profile release builds use (dist builds with it on GitHub Actions).
+[profile.dist]
+inherits = "release"
+lto = "thin"

@@ -1,0 +1,9 @@
+version = 1
+[[jobs]]
+name = "documents"
+source = "/a"
+[[jobs.destinations]]
+id = "d-0001"
+type = "local"
+path = "/tmp/b"
+mode = "mirror"

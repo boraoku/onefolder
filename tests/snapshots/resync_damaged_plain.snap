@@ -1,0 +1,16 @@
+---
+source: src/ui/prompt.rs
+expression: value
+---
+→ work:Backups/Documents   two-way   merge
+
+  The sync state for this destination was lost or damaged. OneFolder will
+  merge both sides: files that exist on only one side are copied to the
+  other, and where the same file differs the local copy wins (the other copy
+  is kept with a .conflict suffix). Nothing is deleted by a merge.
+  bisync said: cannot find prior Path1 or Path2 listings
+
+  The destination folder does not exist yet, so it is empty: it will be
+  created, and everything here copied to OneDrive.
+
+  To OneDrive       2 files        30 B   1 new, 1 changed

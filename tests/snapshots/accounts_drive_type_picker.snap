@@ -1,0 +1,8 @@
+---
+source: src/ui/accounts.rs
+expression: "picker.lines(false).join(\"\\n\")"
+---
+  Drive type
+    personal   OneDrive for home: outlook.com, hotmail.com or live.com
+  ➤ business   OneDrive for work or school: Microsoft 365
+  ↑↓ j/k move · enter select · esc cancel

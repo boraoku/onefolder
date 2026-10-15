@@ -1,0 +1,40 @@
+# Called by release.yml (dist's custom publish job, see dist-workspace.toml)
+# once the GitHub release holds the aarch64 and x86_64 macOS archives: joins
+# them into one universal binary with lipo and adds it to the release.
+name: Publish the universal macOS binary
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  universal:
+    name: Universal macOS binary
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the two macOS archives from the release
+        run: |
+          mkdir -p dist
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist \
+            --pattern 'onefolder-aarch64-apple-darwin.tar.xz' \
+            --pattern 'onefolder-x86_64-apple-darwin.tar.xz'
+      - name: Join them with lipo
+        run: scripts/universal.sh dist
+      - name: Check the binary runs
+        run: |
+          file dist/onefolder-universal-apple-darwin/onefolder
+          dist/onefolder-universal-apple-darwin/onefolder version
+      - name: Add it to the release
+        run: |
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber \
+            dist/onefolder-universal-apple-darwin.tar.xz \
+            dist/onefolder-universal-apple-darwin.tar.xz.sha256

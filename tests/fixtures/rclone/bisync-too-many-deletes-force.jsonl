@@ -1,0 +1,32 @@
+{"time":"2026-10-13T19:56:46.264189+11:00","level":"info","msg":"Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set.","source":"bisync/compare.go:90"}
+{"time":"2026-10-13T19:56:46.264289+11:00","level":"info","msg":"Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType1\": 0,\n\t\"HashType2\": 0,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n","source":"bisync/compare.go:108"}
+{"time":"2026-10-13T19:56:46.264523+11:00","level":"info","msg":"Synching Path1 \"/fixture/bd/src/\" with Path2 \"/fixture/bd/dst/\"","source":"bisync/operations.go:238"}
+{"time":"2026-10-13T19:56:46.264565+11:00","level":"info","msg":"Building Path1 and Path2 listings","source":"bisync/operations.go:310"}
+{"time":"2026-10-13T19:56:46.264893+11:00","level":"info","msg":"Path1 checking for diffs","source":"bisync/operations.go:320"}
+{"time":"2026-10-13T19:56:46.264937+11:00","level":"info","msg":"- Path1             File was deleted                            - f1.txt","source":"bisync/deltas.go:188"}
+{"time":"2026-10-13T19:56:46.264949+11:00","level":"info","msg":"- Path1             File was deleted                            - f2.txt","source":"bisync/deltas.go:188"}
+{"time":"2026-10-13T19:56:46.264957+11:00","level":"info","msg":"- Path1             File was deleted                            - f3.txt","source":"bisync/deltas.go:188"}
+{"time":"2026-10-13T19:56:46.264965+11:00","level":"info","msg":"- Path1             File was deleted                            - f4.txt","source":"bisync/deltas.go:188"}
+{"time":"2026-10-13T19:56:46.264972+11:00","level":"info","msg":"- Path1             File was deleted                            - f5.txt","source":"bisync/deltas.go:188"}
+{"time":"2026-10-13T19:56:46.26498+11:00","level":"info","msg":"- Path1             File was deleted                            - f6.txt","source":"bisync/deltas.go:188"}
+{"time":"2026-10-13T19:56:46.264988+11:00","level":"info","msg":"Path1:    6 changes:    0 new,    0 modified,    6 deleted","source":"bisync/deltas.go:126"}
+{"time":"2026-10-13T19:56:46.264995+11:00","level":"info","msg":"Path2 checking for diffs","source":"bisync/operations.go:328"}
+{"time":"2026-10-13T19:56:46.265027+11:00","level":"info","msg":"Applying changes","source":"bisync/operations.go:381"}
+{"time":"2026-10-13T19:56:46.265081+11:00","level":"info","msg":"- Path2             Queue delete                                - /fixture/bd/dst/f1.txt","source":"bisync/deltas.go:451"}
+{"time":"2026-10-13T19:56:46.265094+11:00","level":"info","msg":"- Path2             Queue delete                                - /fixture/bd/dst/f2.txt","source":"bisync/deltas.go:451"}
+{"time":"2026-10-13T19:56:46.265104+11:00","level":"info","msg":"- Path2             Queue delete                                - /fixture/bd/dst/f3.txt","source":"bisync/deltas.go:451"}
+{"time":"2026-10-13T19:56:46.265114+11:00","level":"info","msg":"- Path2             Queue delete                                - /fixture/bd/dst/f4.txt","source":"bisync/deltas.go:451"}
+{"time":"2026-10-13T19:56:46.265124+11:00","level":"info","msg":"- Path2             Queue delete                                - /fixture/bd/dst/f5.txt","source":"bisync/deltas.go:451"}
+{"time":"2026-10-13T19:56:46.265134+11:00","level":"info","msg":"- Path2             Queue delete                                - /fixture/bd/dst/f6.txt","source":"bisync/deltas.go:451"}
+{"time":"2026-10-13T19:56:46.265142+11:00","level":"info","msg":"- Path1             Do queued copies to                         - Path2","source":"bisync/deltas.go:503"}
+{"time":"2026-10-13T19:56:46.265416+11:00","level":"info","msg":"Deleted","object":"f2.txt","objectType":"*local.Object","source":"operations/operations.go:581"}
+{"time":"2026-10-13T19:56:46.26544+11:00","level":"info","msg":"Deleted","object":"f3.txt","objectType":"*local.Object","source":"operations/operations.go:581"}
+{"time":"2026-10-13T19:56:46.26548+11:00","level":"info","msg":"Deleted","object":"f4.txt","objectType":"*local.Object","source":"operations/operations.go:581"}
+{"time":"2026-10-13T19:56:46.26551+11:00","level":"info","msg":"Deleted","object":"f6.txt","objectType":"*local.Object","source":"operations/operations.go:581"}
+{"time":"2026-10-13T19:56:46.265536+11:00","level":"info","msg":"Deleted","object":"f1.txt","objectType":"*local.Object","source":"operations/operations.go:581"}
+{"time":"2026-10-13T19:56:46.265556+11:00","level":"info","msg":"Deleted","object":"f5.txt","objectType":"*local.Object","source":"operations/operations.go:581"}
+{"time":"2026-10-13T19:56:46.26557+11:00","level":"info","msg":"There was nothing to transfer","source":"sync/sync.go:1033"}
+{"time":"2026-10-13T19:56:46.265676+11:00","level":"info","msg":"Updating listings","source":"bisync/operations.go:395"}
+{"time":"2026-10-13T19:56:46.266277+11:00","level":"info","msg":"Validating listings for Path1 \"/fixture/bd/src/\" vs Path2 \"/fixture/bd/dst/\"","source":"bisync/operations.go:434"}
+{"time":"2026-10-13T19:56:46.266347+11:00","level":"info","msg":"Bisync successful","source":"bisync/operations.go:218"}
+{"time":"2026-10-13T19:56:46.26637+11:00","level":"notice","msg":"\nTransferred:   \t          0 B / 0 B, -, 0 B/s, ETA -\nChecks:                20 / 20, 100%, Listed 10\nDeleted:                6 (files), 0 (dirs), 18 B (freed)\nElapsed time:         0.0s\n\n","stats":{"bytes":0,"checks":20,"deletedDirs":0,"deletes":6,"elapsedTime":0.001748625,"errors":0,"eta":null,"fatalError":false,"listed":10,"renames":0,"retryError":false,"serverSideCopies":0,"serverSideCopyBytes":0,"serverSideMoveBytes":0,"serverSideMoves":0,"speed":0,"totalBytes":0,"totalChecks":20,"totalTransfers":0,"transferTime":0.000228044,"transfers":0},"source":"accounting/stats.go:549"}

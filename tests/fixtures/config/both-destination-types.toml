@@ -1,0 +1,29 @@
+version = 1
+
+[[accounts]]
+label = "work"
+remote = "onefolder-work"
+drive_type = "business"
+
+[[jobs]]
+name = "projects"
+source = "/Volumes/Work/Projects"   # on an external drive
+excludes = ["*.tmp"]
+source_volume_uuid = "B0B0B0B0-0000-4E5F-8A9B-000000000002"
+source_volume_name = "Work"
+source_mount_point = "/Volumes/Work"
+
+  [[jobs.destinations]]
+  id      = "d-7f3a"
+  type    = "onedrive"
+  account = "work"
+  path    = "Backups/Projects"
+  mode    = "two-way"
+
+  [[jobs.destinations]]
+  id            = "d-91c0"
+  type          = "local"
+  path          = "/Volumes/BACKUP/Projects"   # exFAT stick, no UUID
+  volume_name   = "BACKUP"
+  mount_point   = "/Volumes/BACKUP"
+  volume_device = "/dev/disk4s1"

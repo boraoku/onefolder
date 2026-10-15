@@ -1,0 +1,5 @@
+version = 1
+[[jobs]]
+name = "documents"
+source = "/a"
+excludes = [".DS_Store", " "]

@@ -1,0 +1,12 @@
+---
+source: src/ui/prompt.rs
+expression: value
+---
+➤ Folder deleted locally (2 of 3)
+
+  Drafts
+  As last synced: 3 files, 30 B
+  This may be a rename: the plan also adds 3 new files on this Mac. Deleting
+  is then right, as the renamed copy goes up too.
+
+  Not on your Mac any more. What should happen on the drive?

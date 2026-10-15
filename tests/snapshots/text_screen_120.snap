@@ -1,0 +1,16 @@
+---
+source: src/ui/session.rs
+expression: value
+---
+"  ✗ rclone stopped before the sign-in finished, and OneFolder removed the half-made rclone remote onefolder-work, so    "
+"      nothing changed.                                                                                                  "
+"  short                                                                                                                 "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"                                                                                                                        "
+"  esc back · ↑↓ pgup/pgdn scroll · g/G top/bottom                                                                       "

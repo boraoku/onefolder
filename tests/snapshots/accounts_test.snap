@@ -1,0 +1,12 @@
+---
+source: src/ui/accounts.rs
+expression: "render_test(&[ok.clone(), expired, failed], false)"
+---
+Test accounts
+
+  ✓ work        business   connected · 338.8 GB used of 1.1 TB · 760.7 GB free
+  ✗ personal    personal   token expired
+      run: onefolder accounts reconnect personal
+  ✗ shared      business   not reachable: about call failed: directory not found
+
+1 of 3 accounts connected

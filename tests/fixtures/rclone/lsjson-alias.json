@@ -1,0 +1,7 @@
+[
+{"Path":"new.txt","Name":"new.txt","Size":6,"MimeType":"text/plain; charset=utf-8","ModTime":"2026-10-13T19:56:40.225531018+11:00","IsDir":false},
+{"Path":"same.txt","Name":"same.txt","Size":5,"MimeType":"text/plain; charset=utf-8","ModTime":"2026-10-13T19:56:40.199663732+11:00","IsDir":false},
+{"Path":"touched.txt","Name":"touched.txt","Size":8,"MimeType":"text/plain; charset=utf-8","ModTime":"2026-10-13T19:56:40.199847815+11:00","IsDir":false},
+{"Path":"Projects/2026/brief.docx","Name":"brief.docx","Size":6,"MimeType":"application/vnd.openxmlformats-officedocument.wordprocessingml.document","ModTime":"2026-10-13T19:56:40.225437726+11:00","IsDir":false},
+{"Path":"Projects/2026/budget.xlsx","Name":"budget.xlsx","Size":10,"MimeType":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet","ModTime":"2026-10-13T19:56:40.199762232+11:00","IsDir":false}
+]

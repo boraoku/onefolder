@@ -1,0 +1,27 @@
+# Path1 (local) after the run
+./Notes/plan.md
+./keep/k1.txt
+./keep/k2.txt
+./keep/k3.txt
+./keep/k4.txt
+./keep/k5.txt
+./keep/k6.txt
+./mod.txt
+./newlocal.txt
+./newremote.txt
+./only-on-destination.txt
+./rmod.txt
+# Path2 (destination) after the run
+./Notes/plan.conflict-2026-10-13-1.md
+./Notes/plan.md
+./keep/k1.txt
+./keep/k2.txt
+./keep/k3.txt
+./keep/k4.txt
+./keep/k5.txt
+./keep/k6.txt
+./mod.txt
+./newlocal.txt
+./newremote.txt
+./only-on-destination.txt
+./rmod.txt

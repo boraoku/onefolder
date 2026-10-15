@@ -1,0 +1,15 @@
+version = 1
+[[accounts]]
+label = "work"
+remote = "onefolder-work"
+drive_type = "business"
+
+[[jobs]]
+name = "documents"
+source = "/a"
+[[jobs.destinations]]
+id = "d-0001"
+type = "onedrive"
+account = "personal"
+path = "A"
+mode = "one-way"

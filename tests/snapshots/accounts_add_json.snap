@@ -1,0 +1,28 @@
+---
+source: src/jsonout/accounts.rs
+expression: value
+---
+{
+  "onefolder": "[version]",
+  "command": "accounts add",
+  "ok": true,
+  "data": {
+    "account": {
+      "label": "work",
+      "remote": "onefolder-work",
+      "drive_type": "business",
+      "delta": false,
+      "added": "2026-10-13T09:40:00+11:00",
+      "remote_exists": true
+    },
+    "quota": {
+      "total": 1099511627776,
+      "used": 1,
+      "free": 1099511627775
+    },
+    "dry_run": false,
+    "note": null,
+    "warning": null
+  },
+  "error": null
+}

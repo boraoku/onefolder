@@ -1,0 +1,6 @@
+[onefolder-home]
+type = onedrive
+drive_type = personal
+token = {"access_token":"REDACTED","token_type":"Bearer","refresh_token":"REDACTED","expiry":"2026-10-13T10:41:02.123456+11:00"}
+drive_id = 1a2b3c4d5e6f7a8b
+delta = true

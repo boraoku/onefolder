@@ -1,0 +1,21 @@
+{"time":"2026-10-13T19:56:46.208505+11:00","level":"info","msg":"Setting --ignore-listing-checksum as neither --checksum nor --compare checksum are set.","source":"bisync/compare.go:90"}
+{"time":"2026-10-13T19:56:46.20862+11:00","level":"info","msg":"Bisyncing with Comparison Settings: \n{\n\t\"Modtime\": true,\n\t\"Size\": true,\n\t\"Checksum\": false,\n\t\"HashType1\": 0,\n\t\"HashType2\": 0,\n\t\"NoSlowHash\": false,\n\t\"SlowHashSyncOnly\": false,\n\t\"SlowHashDetected\": true,\n\t\"DownloadHash\": false\n}\n","source":"bisync/compare.go:108"}
+{"time":"2026-10-13T19:56:46.208839+11:00","level":"info","msg":"Synching Path1 \"/fixture/bd/src/\" with Path2 \"/fixture/bd/dst/\"","source":"bisync/operations.go:238"}
+{"time":"2026-10-13T19:56:46.208862+11:00","level":"info","msg":"Copying Path2 files to Path1","source":"bisync/resync.go:44"}
+{"time":"2026-10-13T19:56:46.209015+11:00","level":"info","msg":"- Path2             Resync is copying files to                  - Path1","source":"bisync/resync.go:104"}
+{"time":"2026-10-13T19:56:46.20943+11:00","level":"info","msg":"There was nothing to transfer","source":"sync/sync.go:1033"}
+{"time":"2026-10-13T19:56:46.209534+11:00","level":"info","msg":"- Path1             Resync is copying files to                  - Path2","source":"bisync/resync.go:120"}
+{"time":"2026-10-13T19:56:46.210142+11:00","level":"info","msg":"Copied (server-side copy)","size":4,"object":"f10.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.210165+11:00","level":"info","msg":"Copied (server-side copy)","size":3,"object":"f2.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.210155+11:00","level":"info","msg":"Copied (server-side copy)","size":3,"object":"f3.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.21015+11:00","level":"info","msg":"Copied (server-side copy)","size":3,"object":"f1.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.210619+11:00","level":"info","msg":"Copied (server-side copy)","size":3,"object":"f5.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.210666+11:00","level":"info","msg":"Copied (server-side copy)","size":3,"object":"f7.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.210671+11:00","level":"info","msg":"Copied (server-side copy)","size":3,"object":"f4.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.210683+11:00","level":"info","msg":"Copied (server-side copy)","size":3,"object":"f6.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.210936+11:00","level":"info","msg":"Copied (server-side copy)","size":3,"object":"f8.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.210948+11:00","level":"info","msg":"Copied (server-side copy)","size":3,"object":"f9.txt","objectType":"*local.Object","source":"operations/copy.go:382"}
+{"time":"2026-10-13T19:56:46.211045+11:00","level":"info","msg":"Resync updating listings","source":"bisync/resync.go:130"}
+{"time":"2026-10-13T19:56:46.211711+11:00","level":"info","msg":"Validating listings for Path1 \"/fixture/bd/src/\" vs Path2 \"/fixture/bd/dst/\"","source":"bisync/resync.go:164"}
+{"time":"2026-10-13T19:56:46.211878+11:00","level":"info","msg":"Bisync successful","source":"bisync/operations.go:218"}
+{"time":"2026-10-13T19:56:46.211904+11:00","level":"notice","msg":"\nTransferred:   \t         31 B / 31 B, 100%, 0 B/s, ETA -\nChecks:                 0 / 0, -, Listed 20\nTransferred:           10 / 10, 100%\nServer Side Copies:    10 @ 31 B\nElapsed time:         0.0s\n\n","stats":{"bytes":31,"checks":0,"deletedDirs":0,"deletes":0,"elapsedTime":0.002855958,"errors":0,"eta":null,"fatalError":false,"listed":20,"renames":0,"retryError":false,"serverSideCopies":10,"serverSideCopyBytes":31,"serverSideMoveBytes":0,"serverSideMoves":0,"speed":0,"totalBytes":31,"totalChecks":0,"totalTransfers":10,"transferTime":0.001272709,"transfers":10},"source":"accounting/stats.go:549"}

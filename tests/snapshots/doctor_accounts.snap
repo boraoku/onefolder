@@ -1,0 +1,26 @@
+---
+source: src/cli/doctor.rs
+expression: text
+---
+Doctor
+
+➤ rclone
+  ✓ /opt/homebrew/bin/rclone · 1.75.2 (minimum 1.66)
+
+➤ Accounts
+  ✓ work        business   token ok   1.2 TB free
+  ✗ personal    personal   token expired · run: onefolder accounts reconnect personal
+  ✗ old         personal   remote onefolder-old missing from rclone's config · run: onefolder accounts reconnect old
+
+➤ Jobs
+  ◎ none yet · add one with: onefolder jobs add
+
+➤ Data
+  ✓ config /TMP/config/config.toml (version 1 · 3 accounts · 0 jobs)
+  ◎ state /TMP/data/state.json not created yet, it is written after the first run
+  ✓ data /TMP/data writable
+  ✓ logs 0 logs, 0 B
+
+======================================================================
+2 problems · 0 warnings
+======================================================================

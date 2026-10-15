@@ -1,0 +1,22 @@
+---
+source: src/ui/menu.rs
+expression: value
+---
+"                                                                                "
+"  OneFolder                                                                     "
+"             ╭ Keys ─────────────────────────────────────────────╮              "
+"  ⚙ rclone 1.│↑↓  j/k   move                                     │              "
+"             │g  G      first, last                              │              "
+"  ➤ Run a job│enter     open the item; you come back here after  │              "
+"    Jobs     │/         filter the jobs or accounts list         │              "
+"    Accounts │a  e  d   add, edit, remove in a list              │              "
+"    Status   │t  r      test, reconnect an account               │              "
+"    Doctor   │y  n      answer a question                        │4 MB · 3 to…  "
+"    Quit     │?         show or hide these keys                  │              "
+"             │q  esc    quit (in a list: go back)                │              "
+"  ↑↓ j/k move│ctrl-c    quit OneFolder from any screen           │              "
+"             │                                                   │              "
+"             │any key closes this                                │              "
+"             ╰───────────────────────────────────────────────────╯              "
+"                                                                                "
+"                                                                                "

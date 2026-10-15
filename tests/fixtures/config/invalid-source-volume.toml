@@ -1,0 +1,4 @@
+version = 1
+[[jobs]]
+name = "documents"
+source = "/Volumes/Work/Documents"

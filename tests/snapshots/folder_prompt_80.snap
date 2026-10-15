@@ -1,0 +1,24 @@
+---
+source: src/ui/prompt.rs
+expression: value
+---
+"                                                                                "
+"  Run documents                                                                 "
+"                                                                                "
+"  ➤ Folder deleted locally                                                      "
+"                                                                                "
+"    Old projects/2019                                                           "
+"    On OneDrive: 1,284 files, 3.4 GB                                            "
+"                                                                                "
+"    Not on your Mac any more. What should happen on OneDrive?                   "
+"                                                                                "
+"    ○ Delete it on OneDrive too, with the hidden and system files in it         "
+"    ● Keep it on OneDrive and stop syncing this folder                          "
+"    ○ Restore it to this Mac from OneDrive                                      "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  ↑↓ choose · enter confirm · esc cancel run                                    "
+"                                                                                "

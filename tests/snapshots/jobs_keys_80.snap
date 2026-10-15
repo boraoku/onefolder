@@ -1,0 +1,20 @@
+---
+source: src/ui/jobs.rs
+expression: value
+---
+"              ╭ Jobs keys ──────────────────────────────────────╮               "
+"  Jobs  3 jobs│↑↓  j/k   move                                   │               "
+"              │g  G      first, last                            │               "
+"  ➤ documents │enter     run the job                            │               "
+"        → work│a         add a job                              │               "
+"        → /Vol│e         edit the job                           │               "
+"    photos    │d         remove the job (asks first)            │               "
+"        → pers│/         filter by name, folder or destination  │               "
+"    notes     │?         show or hide these keys                │               "
+"        → work│esc       clear the filter, or go back           │go · 2 held    "
+"              │q         go back                                │               "
+"              │ctrl-c    quit OneFolder                         │               "
+"              │                                                 │               "
+"              │any key closes this                              │               "
+"  enter run · ╰─────────────────────────────────────────────────╯ack            "
+"                                                                                "

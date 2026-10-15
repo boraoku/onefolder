@@ -1,0 +1,10 @@
+version = 1
+[[jobs]]
+name = "documents"
+source = "/a"
+[[jobs.destinations]]
+id = "d-0001"
+type = "local"
+path = "/Volumes/BACKUP/Documents"
+volume_device = "/dev/disk4s1"
+mount_point = "/Volumes/BACKUP"

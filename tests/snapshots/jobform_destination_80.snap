@@ -1,0 +1,26 @@
+---
+source: src/ui/jobform.rs
+expression: value
+---
+"                                                                                "
+"  New destination  for documents                                                "
+"                                                                                "
+"  ➤ Type          ● OneDrive  ○ Local folder or drive                           "
+"    Account       ● work                                                        "
+"    Folder        drive root                                                    "
+"    Mode          ● one-way  ○ two-way                                          "
+"    Keep destination                                                            "
+"    Back                                                                        "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  tab ↑↓ move · ←→ choose · ctrl-s save · esc cancel                            "
+"                                                                                "

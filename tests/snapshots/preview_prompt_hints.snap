@@ -1,0 +1,9 @@
+---
+source: src/ui/prompt.rs
+expression: value
+---
+cut:      y/enter copy · n/esc skip this destination · l whole list · ↑↓ scroll
+not cut:  y/enter copy · n/esc skip this destination · ↑↓ scroll
+view:     esc/l back · ↑↓ pgup/pgdn scroll · g/G top/bottom · / filter
+typing:   type to filter · enter keep · esc clear
+filtered: esc clear · l back · ↑↓ pgup/pgdn scroll · g/G top/bottom · / filter

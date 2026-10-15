@@ -1,0 +1,38 @@
+---
+source: src/rclone/events.rs
+expression: events
+---
+[
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "fine.txt",
+    "size": 3,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "transferred",
+    "kind": "server-side",
+    "object": "locked.txt",
+    "size": 7,
+    "message": "Copied (server-side copy)"
+  },
+  {
+    "event": "stats",
+    "bytes": 10,
+    "totalBytes": 10,
+    "transfers": 2,
+    "totalTransfers": 2,
+    "checks": 0,
+    "totalChecks": 0,
+    "listed": 2,
+    "errors": 0,
+    "deletes": 0,
+    "eta": null,
+    "speed": 0.0,
+    "elapsedTime": 0.0,
+    "fatalError": false,
+    "lastError": null,
+    "transferring": []
+  }
+]
