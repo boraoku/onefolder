@@ -123,6 +123,35 @@ pub fn status(d: &DestinationView, now: i64) -> Segment {
     (text, tone)
 }
 
+/// What the Jobs list would warn about a job, in a few words, for the
+/// selection screen of a batch: a drive not answering or not mounted, a
+/// destination that needs a resync or failed last time, or a job never
+/// run. `None` when there is nothing to say.
+pub fn warning(job: &JobView) -> Option<Segment> {
+    let dests = &job.destinations;
+    let outcome = |o: Outcome| {
+        dests
+            .iter()
+            .any(|d| d.last_run.as_ref().is_some_and(|r| r.outcome == o))
+    };
+    let (text, tone) = if dests.is_empty() {
+        ("no destinations", Tone::Warning)
+    } else if dests.iter().any(|d| d.not_answering) {
+        ("drive not answering", Tone::Warning)
+    } else if dests.iter().any(|d| !d.mounted) {
+        ("drive not mounted", Tone::Warning)
+    } else if outcome(Outcome::NeedsResync) {
+        ("needs resync", Tone::Error)
+    } else if outcome(Outcome::Failed) {
+        ("failed last time", Tone::Error)
+    } else if dests.iter().all(|d| d.last_run.is_none()) {
+        ("never run", Tone::Dim)
+    } else {
+        return None;
+    };
+    Some((text.to_string(), tone))
+}
+
 /// The last dry run when it is newer than the last real run (or there is
 /// no real run yet).
 pub fn newer_dry_run(d: &DestinationView) -> Option<&LastRun> {
@@ -971,5 +1000,41 @@ mod tests {
         s.cursor = 1;
         s.handle_key(key(KeyCode::Char('d')));
         snapshot("jobs_120", render(&s, 120));
+    }
+
+    #[test]
+    fn the_selection_screen_warns_as_the_jobs_list_does() {
+        let jobs = mockup();
+        assert_eq!(
+            warning(&jobs[0]),
+            Some(("drive not mounted".to_string(), Tone::Warning))
+        );
+        assert_eq!(warning(&jobs[1]), None, "every last run ok");
+        assert_eq!(
+            warning(&jobs[2]),
+            Some(("failed last time".to_string(), Tone::Error))
+        );
+        let mut job = jobs[1].clone();
+        job.destinations[0].last_run = None;
+        assert_eq!(warning(&job), Some(("never run".to_string(), Tone::Dim)));
+        job.destinations[0].last_run = Some(LastRun {
+            outcome: Outcome::NeedsResync,
+            dry_run: false,
+            finished: None,
+        });
+        assert_eq!(
+            warning(&job),
+            Some(("needs resync".to_string(), Tone::Error))
+        );
+        job.destinations[0].not_answering = true;
+        assert_eq!(
+            warning(&job),
+            Some(("drive not answering".to_string(), Tone::Warning))
+        );
+        job.destinations.clear();
+        assert_eq!(
+            warning(&job),
+            Some(("no destinations".to_string(), Tone::Warning))
+        );
     }
 }

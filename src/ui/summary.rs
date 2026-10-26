@@ -223,7 +223,7 @@ pub struct DestinationLine {
 }
 
 /// The glyph, word and tone of an outcome in the closing summary.
-fn outcome_mark(outcome: &str) -> (&'static str, &'static str, Tone) {
+pub(crate) fn outcome_mark(outcome: &str) -> (&'static str, &'static str, Tone) {
     match outcome {
         "ok" => (theme::DONE, "ok", Tone::Success),
         "partial" => (theme::SKIPPED, "partial", Tone::Warning),
@@ -301,7 +301,9 @@ pub fn job_summary_lines(
             seg(word, tone),
         ];
         let used = 4 + column + 10 + super::width(word);
-        match (&d.reason, width) {
+        // A reason that only repeats the word (`not confirmed`) is left out.
+        let reason = d.reason.as_deref().filter(|r| *r != word);
+        match (reason, width) {
             // A reason that does not fit goes under the line, wrapped.
             (Some(reason), Some(w)) if used + 3 + super::width(reason) > w => {
                 lines.push(line);
@@ -732,5 +734,18 @@ Log: ~/.local/share/onefolder/logs/documents/d-7f3a/2026-10-13T094102.jsonl
         assert_eq!(format_duration(35_000), "35s");
         assert_eq!(format_duration(98_000), "1m 38s");
         assert_eq!(format_duration(7_500_000), "2h 5m");
+    }
+
+    #[test]
+    fn a_reason_that_repeats_the_word_is_left_out() {
+        let dests = [DestinationLine {
+            display: "work:Docs".into(),
+            mode: Mode::OneWay,
+            outcome: "declined".into(),
+            reason: Some("not confirmed".into()),
+        }];
+        let text = render_job_summary("documents", false, &dests, false, None);
+        assert!(text.contains("one-way   not confirmed\n"), "{text}");
+        assert!(!text.contains("· not confirmed"), "{text}");
     }
 }

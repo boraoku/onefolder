@@ -20,6 +20,7 @@ use crate::sync::reporter::{
     Answer, DecidedBy, DeletedFolder, FolderAnswer, MovesAnswer, Question, Where,
 };
 use crate::sync::twoway::place;
+use crate::ui::batch::{self, BatchLine};
 use crate::ui::progress::fit;
 use crate::ui::summary::format_bytes;
 use crate::ui::theme::{self, Tone};
@@ -410,7 +411,39 @@ pub fn render_text(p: &Preview, colour: bool) -> String {
     out
 }
 
+/// What follows a batch's `[Y/n/a]` question, saying what n and a do.
+pub const REST_NOTE: &str = "n skips this destination · a yes to the rest of the batch";
+
+/// A question of a batch, where `a` is yes to it and to every remaining
+/// preview and plan confirmation: `  Continue? [Y/n/a]`.
+pub fn rest_question(question: &str) -> String {
+    question.trim_end().replace("[Y/n]", "[Y/n/a]")
+}
+
+/// Whether a batch offers `a` at this question: only on the go-ahead
+/// confirmations `--yes` skips, the plan (when it needs no safety
+/// confirmation) and the merge offer; the preview's own confirmation
+/// offers it too. Never the moved-files question, the stale lock, the
+/// retry, or the more-than-half question.
+pub fn offers_rest(question: &Question) -> bool {
+    match question {
+        Question::Plan(p) => !p.needs_confirmation(),
+        Question::Resync(_) => true,
+        Question::Moves(_) | Question::StaleLock { .. } | Question::Retry(_) => false,
+    }
+}
+
+/// Reads an answer typed at a batch's `[Y/n/a]` question: `a` or `all` is
+/// yes to the rest; anything else as [`parse_answer_or`].
+pub fn parse_rest_answer(text: &str, default: Answer) -> Answer {
+    match text.trim().to_ascii_lowercase().as_str() {
+        "a" | "all" => Answer::YesToRest,
+        _ => parse_answer_or(text, default),
+    }
+}
+
 /// Reads an answer typed at [`QUESTION`]: empty, `y` or `yes` go ahead.
+#[cfg(test)]
 pub fn parse_answer(text: &str) -> Answer {
     parse_answer_or(text, Answer::Yes)
 }
@@ -1370,6 +1403,11 @@ pub struct PreviewPrompt {
     /// What the hints say no does, when it is not "skip this
     /// destination" (the move question: `n upload again`).
     pub no_hint: Option<String>,
+    /// Where the batch has got to, on the top line; `None` for one job.
+    pub batch: Option<BatchLine>,
+    /// A batch's preview or plan confirmation: `a` is yes to it and to
+    /// every remaining one.
+    pub rest: bool,
 }
 
 impl PreviewPrompt {
@@ -1405,7 +1443,23 @@ impl PreviewPrompt {
             full: Vec::new(),
             view: None,
             no_hint: None,
+            batch: None,
+            rest: false,
         }
+    }
+
+    /// Puts the batch line on top, in a batch.
+    pub fn in_batch(mut self, batch: Option<BatchLine>) -> Self {
+        self.batch = batch;
+        self
+    }
+
+    /// Offers `a`, yes to the rest of the batch: `[Y/n/a]` and what n and
+    /// a do after the question.
+    pub fn offer_rest(mut self) -> Self {
+        self.rest = true;
+        self.question = rest_question(&self.question);
+        self
     }
 
     /// The question about moved files, over the preview: yes moves them,
@@ -1420,8 +1474,9 @@ impl PreviewPrompt {
     }
 
     /// Applies one key. Enter gives the default; y yes; n, Esc, q and
-    /// Ctrl-C no; l opens the whole lists. While they are open only
-    /// Ctrl-C answers; Esc, q and l close them.
+    /// Ctrl-C no; a, where offered, yes to the rest of the batch; l opens
+    /// the whole lists. While they are open only Ctrl-C answers; Esc, q
+    /// and l close them.
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<Answer> {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Some(Answer::No);
@@ -1439,6 +1494,7 @@ impl PreviewPrompt {
             }
             KeyCode::Enter => Some(self.default),
             KeyCode::Char('y') | KeyCode::Char('Y') => Some(Answer::Yes),
+            KeyCode::Char('a') | KeyCode::Char('A') if self.rest => Some(Answer::YesToRest),
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc | KeyCode::Char('q') => {
                 Some(Answer::No)
             }
@@ -1473,15 +1529,36 @@ impl PreviewPrompt {
     }
 
     /// The question, pinned under the scrolling part so it stays in view
-    /// however long the list above it is.
-    pub fn pinned(&self) -> Vec<Line<'static>> {
-        vec![
-            Line::default(),
-            Line::from(Span::styled(
-                self.question.trim_end().to_string(),
+    /// however long the list above it is. In a batch, what n and a do
+    /// follows it, or goes under it when the screen, `width` wide, has no
+    /// room for it there.
+    pub fn pinned(&self, width: usize) -> Vec<Line<'static>> {
+        let question = self.question.trim_end().to_string();
+        let mut lines = vec![Line::default()];
+        if !self.rest {
+            lines.push(Line::from(Span::styled(
+                question,
                 theme::style(Tone::Accent),
-            )),
-        ]
+            )));
+            return lines;
+        }
+        let note = Span::styled(format!("   {REST_NOTE}"), theme::style(Tone::Dim));
+        if crate::ui::width(&question) + crate::ui::width(&note.content) <= width {
+            lines.push(Line::from(vec![
+                Span::styled(question, theme::style(Tone::Accent)),
+                note,
+            ]));
+        } else {
+            lines.push(Line::from(Span::styled(
+                question,
+                theme::style(Tone::Accent),
+            )));
+            lines.push(Line::from(Span::styled(
+                format!("  {REST_NOTE}"),
+                theme::style(Tone::Dim),
+            )));
+        }
+        lines
     }
 
     fn hints(&self) -> String {
@@ -1500,6 +1577,7 @@ impl PreviewPrompt {
             Some(hint) => hint.clone(),
             None => format!("{no} skip this destination"),
         };
+
         format!(
             "{yes} {} {d} {no} {d} {full}{}{} scroll",
             self.verb,
@@ -1513,10 +1591,12 @@ impl PreviewPrompt {
             self.render_full(frame, view);
             return;
         }
+        let width = usize::from(frame.area().width).saturating_sub(4);
         let max = render_scrolling(
             frame,
+            self.batch.as_ref(),
             self.lines(),
-            self.pinned(),
+            self.pinned(width),
             self.scroll,
             &self.hints(),
         );
@@ -1532,6 +1612,7 @@ impl PreviewPrompt {
             horizontal: 2,
             vertical: 1,
         });
+        let area = batch::top(frame, area, self.batch.as_ref());
         if area.height == 0 {
             return;
         }
@@ -1602,10 +1683,11 @@ impl PreviewPrompt {
 }
 
 /// Draws lines with a scroll offset, `pinned` lines under them that never
-/// scroll, and a hint line at the bottom. Gives back the furthest the
+/// scroll, and a hint line at the bottom, under the batch line in a batch. Gives back the furthest the
 /// lines can scroll, counting the rows wrapped lines take.
 fn render_scrolling(
     frame: &mut Frame,
+    batch: Option<&BatchLine>,
     lines: Vec<Line<'static>>,
     pinned: Vec<Line<'static>>,
     scroll: u16,
@@ -1615,6 +1697,7 @@ fn render_scrolling(
         horizontal: 2,
         vertical: 1,
     });
+    let area = batch::top(frame, area, batch);
     if area.height < 3 {
         return 0;
     }
@@ -1734,6 +1817,8 @@ pub struct FolderPrompt {
     /// The current folder.
     pub current: usize,
     pub scroll: u16,
+    /// Where the batch has got to, on the top line; `None` for one job.
+    pub batch: Option<BatchLine>,
 }
 
 impl FolderPrompt {
@@ -1749,6 +1834,7 @@ impl FolderPrompt {
             choice: 1,
             current: 0,
             scroll: 0,
+            batch: None,
         }
     }
 
@@ -1936,12 +2022,14 @@ impl FolderPrompt {
     pub fn render(&self, frame: &mut Frame) {
         // Keep the current folder in view in list mode.
         let scroll = if self.list_mode() {
-            (self.current as u16 + 9).saturating_sub(frame.area().height.saturating_sub(4))
+            let top = if self.batch.is_some() { 2 } else { 0 };
+            (self.current as u16 + 9 + top).saturating_sub(frame.area().height.saturating_sub(4))
         } else {
             0
         };
         render_scrolling(
             frame,
+            self.batch.as_ref(),
             self.lines(),
             Vec::new(),
             scroll.max(self.scroll),
@@ -3270,5 +3358,120 @@ pub mod tests {
         }
         let screen = render_sized(&prompt, 80, 8);
         assert!(screen.contains("of 49"), "{screen}");
+    }
+
+    fn batch_line() -> BatchLine {
+        let mut line = BatchLine::new(&["documents".into(), "records".into(), "photos".into()]);
+        line.jobs[0].1 = Some(batch::JobEnd::Ok);
+        line.current = 1;
+        line
+    }
+
+    /// In a batch the preview confirmation offers `a`, yes to the rest of
+    /// the batch, and every screen has the batch line on top.
+    #[test]
+    fn a_batch_confirmation_offers_yes_to_the_rest() {
+        let mut prompt = PreviewPrompt::new("Run records".into(), mockup())
+            .in_batch(Some(batch_line()))
+            .offer_rest();
+        assert_eq!(prompt.question, "  Continue? [Y/n/a]");
+        let screen = render_prompt(&prompt, 80);
+        snapshot("preview_prompt_batch_80", screen.clone());
+        assert!(screen.contains("    Continue? [Y/n/a]  "), "{screen}");
+        assert!(
+            screen.contains("    n skips this destination · a yes to the rest of the batch"),
+            "{screen}"
+        );
+        // On the question's line when there is room.
+        assert!(render_prompt(&prompt, 120).contains(
+            "Continue? [Y/n/a]   n skips this destination · a yes to the rest of the batch"
+        ));
+        assert_eq!(
+            prompt.handle_key(key(KeyCode::Char('a'))),
+            Some(Answer::YesToRest)
+        );
+        assert_eq!(
+            prompt.handle_key(key(KeyCode::Char('A'))),
+            Some(Answer::YesToRest)
+        );
+        assert_eq!(prompt.handle_key(key(KeyCode::Char('n'))), Some(Answer::No));
+        // The whole-list view keeps the batch line, and `a` answers nothing there.
+        prompt.handle_key(key(KeyCode::Char('l')));
+        let view = render_sized(&prompt, 80, 20);
+        assert!(
+            view.lines()
+                .nth(1)
+                .unwrap_or_default()
+                .contains("Several jobs · job 2 of 3"),
+            "{view}"
+        );
+        assert!(view.contains("Run records"), "{view}");
+        assert_eq!(prompt.handle_key(key(KeyCode::Char('a'))), None);
+
+        // Only in a batch: a single job's question has no `a`.
+        let mut single = PreviewPrompt::new("Run documents".into(), mockup());
+        assert_eq!(single.question, QUESTION);
+        assert!(!single.hints().contains("rest"));
+        assert_eq!(single.handle_key(key(KeyCode::Char('a'))), None);
+        assert!(!render_prompt(&single, 80).contains("Several jobs"));
+        // The moves question carries the batch line but never `a`.
+        let mut moves = PreviewPrompt::moves("Run records".into(), &moves_mockup())
+            .in_batch(Some(batch_line()));
+        assert!(!moves.question.contains("/a]"));
+        assert_eq!(moves.handle_key(key(KeyCode::Char('a'))), None);
+        assert!(render_prompt(&moves, 80).contains("Several jobs · job 2 of 3"));
+        // The plan and the merge offer read `[Y/n/a]` as well.
+        assert_eq!(
+            rest_question("  Merge both sides now? [Y/n] "),
+            "  Merge both sides now? [Y/n/a]"
+        );
+        assert_eq!(parse_rest_answer("a\n", Answer::Yes), Answer::YesToRest);
+        assert_eq!(parse_rest_answer("ALL", Answer::Yes), Answer::YesToRest);
+        assert_eq!(parse_rest_answer("\n", Answer::Yes), Answer::Yes);
+        assert_eq!(parse_rest_answer("n", Answer::Yes), Answer::No);
+    }
+
+    #[test]
+    fn the_folder_prompt_has_the_batch_line_on_top() {
+        let mut prompt = FolderPrompt::new(
+            "Run records".into(),
+            "onedrive",
+            vec![folder("Old projects/2019", 1284, 3_400_000_000)],
+        );
+        prompt.batch = Some(batch_line());
+        let screen = render_folders(&prompt, 80, 24);
+        let lines: Vec<&str> = screen.lines().collect();
+        assert!(
+            lines[1].contains("Several jobs · job 2 of 3 · documents ✓"),
+            "{screen}"
+        );
+        assert!(lines[3].contains("Run records"), "{screen}");
+    }
+
+    /// `a` is offered on the go-ahead confirmations `--yes` skips, and
+    /// nowhere else; both reporters ask [`offers_rest`].
+    #[test]
+    fn only_go_ahead_questions_offer_yes_to_the_rest() {
+        let plan = plan_mockup();
+        assert!(!plan.needs_confirmation());
+        assert!(offers_rest(&Question::Plan(&plan)));
+        let mut big = plan_mockup();
+        big.big.push(crate::sync::plan::BigChange {
+            kind: BigKind::Deletions,
+            side: Where::Destination,
+            count: 6,
+            total: 10,
+        });
+        assert!(big.needs_confirmation());
+        assert!(!offers_rest(&Question::Plan(&big)));
+        let offer = ResyncOffer::default();
+        assert!(offers_rest(&Question::Resync(&offer)));
+        assert!(!offers_rest(&Question::Moves(&moves_mockup())));
+        assert!(!offers_rest(&Question::StaleLock {
+            pid: 4242,
+            path: "~/x.lck"
+        }));
+        let abort = Abort::AllChanged { side: None };
+        assert!(!offers_rest(&Question::Retry(&abort)));
     }
 }

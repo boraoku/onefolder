@@ -66,6 +66,8 @@ onefolder jobs remove documents            # Remove a job; its files and run log
 onefolder jobs release documents FOLDER    # Start syncing a held folder again
 onefolder run documents                    # Run every destination of a job, in order
 onefolder run documents --dest d-7f3a      # Run one destination only (ids are in jobs list --json)
+onefolder run documents photos             # Run several jobs, one after another, in config order
+onefolder run --all                        # Run every job, one after another
 onefolder status                           # The last run of every destination
 onefolder doctor                           # Check rclone, accounts, jobs, drives and data files
 onefolder doctor --prune-logs              # Remove old run logs
@@ -236,6 +238,43 @@ onefolder status               # the last run of every destination
 onefolder run documents --dest d-7f3a   # run one destination only (ids are in jobs list --json)
 ```
 
+#### Several jobs, one after another
+
+With two jobs or more, the last row of the `Run which job?` list (from **Run a job** in the menu, or `onefolder run` on its own) is `Several jobs, one after another…`. It asks whether to run all of them or to choose:
+
+```text
+  Choose jobs
+
+    [x] documents      ~/Documents     2 destinations
+  ➤ [ ] engineering    ~/Engineering   2 destinations
+    [x] records        ~/Records       2 destinations
+    [x] photos         ~/Pictures      1 destination · drive not mounted
+
+  3 jobs · 5 destinations will run, one after another
+
+  ↑↓ move · space tick · a all · n none · enter start · esc back
+```
+
+Space ticks and unticks, `a` ticks all, `n` none, and Enter starts once at least one is ticked. The ticks start as you left them last time (a job added since starts ticked). After each job comes what the jobs list would warn about, such as an unplugged drive, so a job that will fail its checks is visible before you start; it is not unticked for you.
+
+The jobs run in the order of your config, whatever order you ticked or named them in, each exactly as a run of it alone would, and the next one starts when the one before has finished. A job that fails its checks (an unplugged drive, an account that does not answer) is recorded with the reason and the next job starts; a job whose last run is still going elsewhere is skipped (`another run in progress`); only Ctrl-C stops the batch, and the jobs not yet started are recorded as `not run, the batch was stopped`. Every screen carries a dim line at the top saying where the batch is:
+
+```text
+Several jobs · job 2 of 3 · documents ✓ · records · photos next
+
+Run records
+
+→ boramektup:Records   one-way   destination 1 of 2
+```
+
+Each preview still asks, with one more answer: `a` is yes to this preview and to every remaining preview and plan confirmation of the batch, as `--yes` would (the question about moved files, the folder prompt and the safety question about deleting more than half a side still ask):
+
+```text
+  Continue? [Y/n/a]   n skips this destination · a yes to the rest of the batch
+```
+
+The batch ends with a closing summary: a line per job, and under it a line per destination with its outcome and reason. From the command line, `onefolder run documents records` runs those jobs and `onefolder run --all` runs every job; `--all --yes` is the unattended form. Without a terminal, `Job 2 of 3: records` is printed before each job instead of the line at the top. `--dest` belongs to one job and is refused with several; a job name that does not exist refuses the whole batch before anything runs. `--resync` and `--folder-deletes` apply to every two-way destination of every job in the batch, so `run --all --resync` rebuilds every two-way pair. A single job runs exactly as before, and a name given twice (`run documents documents`) is a single run; `--all` is a batch even when there is only one job, so a script can always rely on the `batch-done` event.
+
 <details>
 <summary><strong>The main menu</strong></summary>
 
@@ -338,10 +377,11 @@ If a file changes in the short time between OneFolder's plan and the real run, b
 | --- | --- |
 | `--dry-run` | Show what would change and stop. Nothing is copied or deleted, and a dry run never asks the folder prompt. |
 | `--yes`, `-y` | Skip the preview confirmation. It never answers the folder prompt, and a two-way run deleting more than half a side still needs a terminal. |
-| `--json` | Non-interactive: no prompts and no screens. Commands print one JSON document; `run --json` prints newline-delimited JSON events, one per line. While a preview or a two-way plan runs it sends a `progress` event at most once a second: `step`, `elapsed` (seconds), `checked`, `listed`, `to_copy` (`files` and `bytes`), `destination_listed`, `destination_done` and `still_listing`. The `preview` and `plan` events carry `copy_hidden` and `effective_excludes`, every pattern in force. |
+| `--json` | Non-interactive: no prompts and no screens. Commands print one JSON document; `run --json` prints newline-delimited JSON events, one per line. While a preview or a two-way plan runs it sends a `progress` event at most once a second: `step`, `elapsed` (seconds), `checked`, `listed`, `to_copy` (`files` and `bytes`), `destination_listed`, `destination_done` and `still_listing`. The `preview` and `plan` events carry `copy_hidden` and `effective_excludes`, every pattern in force. With several jobs (or `--all`) every event except `refused` and `batch-done` also carries `batch` (`index`, the job's place from 1, and `of`); each job that runs ends with its own `done`, a job that does not run sends `job-skipped` (`job`, `code`: `locked`, `lock-failed`, `no-destinations` or `stopped`, and `reason`), and the stream ends with `batch-done` (`ok`, `exit_code` and `jobs`, each with `job`, `outcome`: `ok`, `partial`, `failed`, `stopped` or `skipped`, `reason` and its `destinations` as `done` lists them). A batch refused before anything ran sends `refused` and a `batch-done` with no jobs. |
 | `--folder-deletes` | Answer the folder prompt: `ask`, `delete`, `keep` or `restore`. |
 | `--moves` | One-way: what to do with files moved on your computer whose old copy is on the destination: `ask` (without a terminal: upload them again), `move` (move them there, the default with `--yes`) or `copy` (upload them again). With `--json`, the `preview` event carries `moves` (`count`, `bytes`, `choice`: `undecided`, `move` or `copy`, and the first 10 `pairs` and `groups`), a `moves` event says what was decided and how (`answer`: `move` or `copy`; `by`: `asked`, `flag`, `default` or `not-asked`; `count`, `bytes`), `progress` carries `checking_moves` while possible moves are checked and `moved` (`files` and `of`) during the `moving` step, and the summary carries `moved` (`files` and `bytes`) only when something moved. |
-| `--dest ID` | Run only this destination. |
+| `--dest ID` | Run only this destination (one job only). |
+| `--all` | Run every job, one after another, in config order. |
 | `--resync` | Merge both sides again before running (two-way). |
 | `--copy-hidden yes\|no` | On `jobs add` and `jobs edit`: copy hidden files and folders, or leave them out (the default). |
 
@@ -352,6 +392,8 @@ Exit codes for `onefolder run`:
 | 0 | Every destination finished ok. |
 | 1 | Partial: errors, or a destination failed, needs a merge (resync), was skipped, declined or cancelled. Declining the preview and pressing Ctrl-C both count. |
 | 2 | Refused before anything ran (rclone missing, unknown job, another run holds the lock), or every destination failed. |
+
+Several jobs follow the same rule over the destinations of every job: 0 when all are ok, 2 when all failed, when the batch was refused before anything ran, or when no job ran a destination (every job skipped because another run holds its lock, or because it has no destinations), and 1 otherwise (a job skipped or not run counts as skipped).
 
 Other commands with `--json` exit 0 on success, 1 on a partial result and 2 on failure or refusal. `accounts test` exits 0 when every account connects, 1 when some fail and 2 when all of them fail.
 
@@ -414,7 +456,7 @@ An `.excludes` file left behind without its log is removed too.
 
 #### macOS: launchd
 
-To run a job every night, save a LaunchAgent as `~/Library/LaunchAgents/local.onefolder.documents.plist`. Replace `YOU` with your user name, and `/opt/homebrew/bin/onefolder` with what `which onefolder` prints on your Mac (launchd needs the full path).
+To run every job every night, one after another, save a LaunchAgent as `~/Library/LaunchAgents/local.onefolder.plist` (for one job, put its name in place of `--all`). Replace `YOU` with your user name, and `/opt/homebrew/bin/onefolder` with what `which onefolder` prints on your Mac (launchd needs the full path).
 
 <details>
 <summary><strong>Example LaunchAgent plist</strong></summary>
@@ -425,12 +467,12 @@ To run a job every night, save a LaunchAgent as `~/Library/LaunchAgents/local.on
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>local.onefolder.documents</string>
+  <string>local.onefolder</string>
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/bin/onefolder</string>
     <string>run</string>
-    <string>documents</string>
+    <string>--all</string>
     <string>--yes</string>
     <string>--json</string>
   </array>
@@ -447,9 +489,9 @@ To run a job every night, save a LaunchAgent as `~/Library/LaunchAgents/local.on
     <integer>30</integer>
   </dict>
   <key>StandardOutPath</key>
-  <string>/Users/YOU/Library/Logs/onefolder-documents.log</string>
+  <string>/Users/YOU/Library/Logs/onefolder.log</string>
   <key>StandardErrorPath</key>
-  <string>/Users/YOU/Library/Logs/onefolder-documents.log</string>
+  <string>/Users/YOU/Library/Logs/onefolder.log</string>
 </dict>
 </plist>
 ```
@@ -459,11 +501,11 @@ To run a job every night, save a LaunchAgent as `~/Library/LaunchAgents/local.on
 Load it, and unload it later, with:
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.onefolder.documents.plist
-launchctl bootout gui/$(id -u)/local.onefolder.documents
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.onefolder.plist
+launchctl bootout gui/$(id -u)/local.onefolder
 ```
 
-With `--json` the log file named in `StandardOutPath` holds newline-delimited JSON, one event per line, ending with a `done` event that has the exit code and each destination's outcome; that is easier to check from a script than the text. Leave `--json` out to get the same text a terminal shows.
+With `--json` the log file named in `StandardOutPath` holds newline-delimited JSON, one event per line: a `done` event after each job with its exit code and each destination's outcome, and a `batch-done` event at the end with every job's (for one job, the `done` event is the last). That is easier to check from a script than the text. Leave `--json` out to get the same text a terminal shows.
 
 Things to know about unattended runs:
 
@@ -471,28 +513,28 @@ Things to know about unattended runs:
 - Without a terminal, `--folder-deletes` defaults to `keep`, so an unattended run never deletes a folder on the destination. A deleted folder is put on hold instead; check `onefolder status` now and then.
 - A two-way run that would delete more than half a side is not carried out without a terminal, and the run exits 1. Run the job by hand to see the plan and confirm it.
 - The first two-way run of a destination is a merge; with `--yes` it goes ahead without asking.
-- If the previous run of the job is still going, the scheduled run refuses with exit 2 rather than running twice.
+- If the previous run of a job is still going, the scheduled run skips that job (`another run in progress`) and runs the others; a scheduled run of that one job alone refuses with exit 2. Either way it never runs twice.
 - An unplugged drive makes that destination fail with the message above; the other destinations still run.
 
 #### Linux: a systemd user timer
 
-Save the service as `~/.config/systemd/user/onefolder-documents.service`, with the full path `which onefolder` prints:
+Save the service as `~/.config/systemd/user/onefolder.service`, with the full path `which onefolder` prints:
 
 ```ini
 [Unit]
-Description=OneFolder: run documents
+Description=OneFolder: run every job
 
 [Service]
 Type=oneshot
-ExecStart=%h/.cargo/bin/onefolder run documents --yes --json
+ExecStart=%h/.cargo/bin/onefolder run --all --yes --json
 Environment=PATH=%h/.cargo/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
 ```
 
-and the timer as `~/.config/systemd/user/onefolder-documents.timer`:
+and the timer as `~/.config/systemd/user/onefolder.timer`:
 
 ```ini
 [Unit]
-Description=Run OneFolder's documents job every night
+Description=Run every OneFolder job every night
 
 [Timer]
 OnCalendar=*-*-* 02:30:00
@@ -502,14 +544,14 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-Start it with `systemctl --user daemon-reload && systemctl --user enable --now onefolder-documents.timer`; `systemctl --user list-timers` shows when it runs next, and `journalctl --user -u onefolder-documents` shows what each run printed (newline-delimited JSON, as above). A user timer runs while you are logged in; `loginctl enable-linger $USER` lets it run when you are not. The notes above about unattended runs apply as they are.
+Start it with `systemctl --user daemon-reload && systemctl --user enable --now onefolder.timer`; `systemctl --user list-timers` shows when it runs next, and `journalctl --user -u onefolder` shows what each run printed (newline-delimited JSON, as above). A user timer runs while you are logged in; `loginctl enable-linger $USER` lets it run when you are not. The notes above about unattended runs apply as they are.
 
 #### WSL: Windows Task Scheduler
 
-WSL has no scheduler of its own running while it is closed, so let Windows start the run. In Task Scheduler, create a task with a daily trigger whose action starts `wsl.exe` with the arguments `-d Ubuntu -- /home/you/.cargo/bin/onefolder run documents --yes` (the distribution's name as `wsl -l` shows it, and the full path `which onefolder` prints inside WSL: `wsl.exe` runs the command without a login shell, so `~/.cargo/bin` is not on its `PATH`). The same as a single command, from PowerShell or `cmd`:
+WSL has no scheduler of its own running while it is closed, so let Windows start the run. In Task Scheduler, create a task with a daily trigger whose action starts `wsl.exe` with the arguments `-d Ubuntu -- /home/you/.cargo/bin/onefolder run --all --yes` (the distribution's name as `wsl -l` shows it, and the full path `which onefolder` prints inside WSL: `wsl.exe` runs the command without a login shell, so `~/.cargo/bin` is not on its `PATH`). The same as a single command, from PowerShell or `cmd`:
 
 ```bat
-schtasks /Create /TN "OneFolder documents" /SC DAILY /ST 02:30 /TR "wsl.exe -d Ubuntu -- /home/you/.cargo/bin/onefolder run documents --yes"
+schtasks /Create /TN "OneFolder" /SC DAILY /ST 02:30 /TR "wsl.exe -d Ubuntu -- /home/you/.cargo/bin/onefolder run --all --yes"
 ```
 
 rclone must be on WSL's default `PATH` too; its installer from rclone.org puts it in `/usr/bin`, which is. A drive the job writes to must be mounted in WSL when the task runs.

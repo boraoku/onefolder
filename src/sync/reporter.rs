@@ -209,6 +209,11 @@ pub struct FileDone {
 pub enum Answer {
     Yes,
     No,
+    /// Yes, and to every remaining preview and plan confirmation of the
+    /// batch (`a`). Only a batch's screens and plain questions give it, and
+    /// only for those confirmations; the reporter passes it on as `Yes` and
+    /// says so through [`Reporter::yes_to_rest`].
+    YesToRest,
 }
 
 /// A folder deleted locally, for the two-way folder-deletion prompt.
@@ -410,6 +415,14 @@ pub trait Reporter {
 
     /// The destination is done; `summary` is what the summary block shows.
     fn destination_finished(&mut self, summary: &Summary);
+
+    /// True once a confirmation of a batch was answered `a`: yes to it and
+    /// to every remaining preview and plan confirmation of the batch. The
+    /// batch runner then runs the rest as `--yes` would. Never true for a
+    /// single job.
+    fn yes_to_rest(&self) -> bool {
+        false
+    }
 }
 
 /// Asks the run to stop, as a Ctrl-C would: for screens that read Ctrl-C

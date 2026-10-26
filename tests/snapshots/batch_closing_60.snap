@@ -1,0 +1,16 @@
+---
+source: src/ui/batch.rs
+expression: value
+---
+============================================================
+Several jobs   4 jobs · 4 destinations · dry run · 18m 40s
+  documents     ✓ ok
+    work:Backups/Documents       one-way   ✓ ok
+    /Volumes/T7 Shield/Docs      two-way   ✓ ok
+  records       ◎ partial
+    boramektup:Records           one-way   ✓ ok
+    /Volumes/T7 Shield/Records   one-way   ✗ failed
+        T7 Shield drive not mounted
+  engineering   ◎ skipped · another run in progress
+  photos        ◎ not run, the batch was stopped
+============================================================

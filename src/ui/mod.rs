@@ -2,6 +2,7 @@
 //! crossterm.
 
 pub mod accounts;
+pub mod batch;
 pub mod browse;
 pub mod complete;
 pub mod form;

@@ -651,6 +651,96 @@ fn run_refusals() {
     assert!(!data_has_state(&home), "nothing was recorded");
 }
 
+/// Several jobs refuse before anything runs: `--dest` belongs to one job,
+/// an unknown job refuses the whole batch, and no terminal needs `--yes`.
+/// With `--json`, `refused` and a `batch-done` with no jobs.
+#[cfg(unix)]
+#[test]
+fn batch_refusals() {
+    let home = tempfile::tempdir().unwrap();
+    let path = fake_rclone_path("rclone v1.75.2");
+    for name in ["documents", "photos"] {
+        let source = home.path().join(name);
+        std::fs::create_dir_all(&source).unwrap();
+        onefolder(&home)
+            .env("PATH", path.path())
+            .args(["jobs", "add", name, "--source"])
+            .arg(&source)
+            .arg("--local")
+            .arg(home.path().join(format!("{name}-copy")))
+            .assert()
+            .success();
+    }
+    let json = |args: &[&str]| -> (Option<i32>, Vec<serde_json::Value>) {
+        let out = onefolder(&home)
+            .env("PATH", path.path())
+            .args(args)
+            .output()
+            .unwrap();
+        let lines = String::from_utf8(out.stdout)
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        (out.status.code(), lines)
+    };
+    for (args, code) in [
+        (
+            &[
+                "run",
+                "documents",
+                "photos",
+                "--dest",
+                "d-0001",
+                "--yes",
+                "--json",
+            ][..],
+            "dest-needs-one-job",
+        ),
+        (
+            &["run", "--all", "--dest", "d-0001", "--yes", "--json"][..],
+            "dest-needs-one-job",
+        ),
+        (
+            &["run", "documents", "nope", "--yes", "--json"][..],
+            "unknown-job",
+        ),
+        (&["run", "--all", "--json"][..], "needs-yes"),
+    ] {
+        let (exit, lines) = json(args);
+        assert_eq!(exit, Some(2), "{args:?}");
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(lines[0]["event"], "refused");
+        assert_eq!(lines[0]["code"], code, "{args:?}");
+        assert_eq!(lines[1]["event"], "batch-done");
+        assert_eq!(lines[1]["exit_code"], 2);
+        assert_eq!(lines[1]["jobs"], serde_json::json!([]));
+    }
+    onefolder(&home)
+        .env("PATH", path.path())
+        .args(["run", "documents", "nope", "--yes"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "There is no job called nope. See onefolder jobs list. No job was run.",
+        ));
+    onefolder(&home)
+        .env("PATH", path.path())
+        .args(["run", "documents", "photos", "--dest", "d-0001", "--yes"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "--dest runs one destination of one job",
+        ));
+    // --all with job names is a usage error.
+    onefolder(&home)
+        .env("PATH", path.path())
+        .args(["run", "--all", "documents"])
+        .assert()
+        .code(2);
+    assert!(!data_has_state(&home), "nothing was recorded");
+}
+
 fn data_has_state(home: &TempDir) -> bool {
     home.path().join("data/state.json").exists()
 }

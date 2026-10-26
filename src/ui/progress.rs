@@ -6,7 +6,13 @@
 //!
 //! When the run is over the screen closes and the summary blocks (and, for
 //! `--dry-run`, the previews) are printed on the normal screen, so they
-//! stay in the terminal's scrollback. Inside the interactive session they
+//! stay in the terminal's scrollback.
+//!
+//! A batch of jobs keeps one screen from its first job to its last: each
+//! job starts with [`TuiReporter::begin_job`], every screen (the run, the
+//! questions, the whole lists) carries the batch line on top, and the text
+//! printed afterwards starts each job's part with the batch line as that
+//! job left it. Inside the interactive session they
 //! are shown on the session's text screen instead, and the summary blocks
 //! are printed when the session ends (see `ui::session`).
 
@@ -33,6 +39,7 @@ use crate::sync::reporter::{
     FileDone, FolderAnswer, Looking, MovesAnswer, Question, Reporter, Step, Where,
 };
 use crate::sync::twoway::place;
+use crate::ui::batch::{self as several, BatchLine, JobEnd};
 use crate::ui::prompt::{self, FolderPrompt, PreviewPrompt};
 use crate::ui::summary::{self as block, format_bytes, format_duration};
 use crate::ui::theme::{self, Tone};
@@ -67,6 +74,8 @@ pub struct ProgressModel {
     pub notes: Vec<(String, Tone)>,
     /// Advances on every redraw, for the spinner.
     pub tick: usize,
+    /// Where the batch has got to, on the top line; `None` for one job.
+    pub batch: Option<BatchLine>,
 }
 
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -86,7 +95,18 @@ impl ProgressModel {
             stopping: false,
             notes: Vec::new(),
             tick: 0,
+            batch: None,
         }
+    }
+
+    /// The next job of a batch: its title, no destination yet and no
+    /// notes from the job before.
+    pub fn next_job(&mut self, job: &str, batch: BatchLine) {
+        *self = ProgressModel {
+            tick: self.tick,
+            batch: Some(batch),
+            ..ProgressModel::new(job)
+        };
     }
 
     pub fn start(&mut self, dest: &DestinationInfo) {
@@ -396,6 +416,7 @@ impl ProgressModel {
             horizontal: 2,
             vertical: 1,
         });
+        let area = several::top(frame, area, self.batch.as_ref());
         if area.height < 3 {
             return;
         }
@@ -491,6 +512,7 @@ pub(crate) fn fit(path: &str, width: usize) -> String {
 
 /// Messages from the runner to the screen thread.
 enum Msg {
+    Job(String, BatchLine),
     Start(DestinationInfo),
     Step(Step),
     Stats(Stats),
@@ -521,6 +543,10 @@ enum After {
     Summary(Box<Summary>),
     /// The job's closing summary, for a job with more than one destination.
     Closing(String),
+    /// The batch line as a job of a batch left it, before that job's part.
+    Batch(BatchLine),
+    /// A remark about the batch, such as a stale run lock removed.
+    Remark(String),
 }
 
 /// The run screen as a [`Reporter`].
@@ -532,6 +558,12 @@ pub struct TuiReporter {
     title: String,
     /// The current destination's type: `onedrive` or `local`.
     kind: &'static str,
+    /// Where the batch has got to; `None` for one job.
+    batch: Option<BatchLine>,
+    /// Where the current job's part of `after` starts, in a batch.
+    job_start: usize,
+    /// A confirmation of the batch was answered `a`.
+    yes_rest: bool,
 }
 
 impl TuiReporter {
@@ -557,6 +589,9 @@ impl TuiReporter {
                 dry_run,
                 title: format!("Run {job}"),
                 kind: "local",
+                batch: None,
+                job_start: 0,
+                yes_rest: false,
             }),
             Ok(Err(e)) => {
                 let _ = thread.join();
@@ -585,52 +620,67 @@ impl TuiReporter {
             self.after.push(After::Closing(text));
         }
         self.close();
-        let colour = theme::colour_on_stdout();
-        let mut out = String::new();
-        for a in &self.after {
-            match a {
-                After::Problem(m) => {
-                    let mut lines = m.lines();
-                    let mut text = String::new();
-                    if let Some(first) = lines.next() {
-                        text.push_str(&format!(
-                            "{} {first}\n",
-                            theme::paint(theme::FAILED, Tone::Error, colour)
-                        ));
-                    }
-                    for l in lines {
-                        text.push_str(&format!("{l}\n"));
-                    }
-                    super::session::record(&text);
-                    out.push_str(&text);
-                }
-                After::Skipped(line) => {
-                    let text = format!("{}\n", theme::paint(line, Tone::Warning, colour));
-                    super::session::record(&text);
-                    out.push_str(&text);
-                }
-                After::Preview(p) => {
-                    out.push_str(&prompt::render_text(p, colour));
-                    out.push('\n');
-                }
-                After::Text(text) => {
-                    out.push_str(text);
-                    out.push('\n');
-                }
-                After::Summary(s) => {
-                    let text = block::render_text(s, colour, super::terminal_width());
-                    super::session::record(&format!("{text}\n"));
-                    out.push_str(&text);
-                    out.push('\n');
-                }
-                After::Closing(text) => {
-                    super::session::record(&format!("{text}\n"));
-                    out.push_str(text);
-                    out.push('\n');
-                }
-            }
+        super::out(&after_text(&self.after, theme::colour_on_stdout()))
+    }
+
+    /// The next job of a batch takes the screen: its title, and the batch
+    /// line (with this job as the current one) on every screen until the
+    /// next.
+    pub fn begin_job(&mut self, job: &str, batch: &BatchLine) {
+        self.title = format!("Run {job}");
+        self.batch = Some(batch.clone());
+        self.job_start = self.after.len();
+        self.send(Msg::Job(job.to_string(), batch.clone()));
+    }
+
+    /// The job is over: its closing summary (for more than one
+    /// destination) ends its part of the text printed afterwards, and the
+    /// batch line as it now stands (with this job's end) starts it.
+    pub fn end_job(&mut self, closing: Option<String>, batch: &BatchLine) {
+        if let Some(text) = closing {
+            self.after.push(After::Closing(text));
         }
-        super::out(&out)
+        let at = self.job_start.min(self.after.len());
+        self.after.insert(at, After::Batch(batch.clone()));
+        self.batch = Some(batch.clone());
+    }
+
+    /// A job of the batch that does not run (skipped, or the batch was
+    /// stopped): one line on the screen and in the text afterwards.
+    pub fn job_not_run(&mut self, job: &str, end: &JobEnd, batch: &BatchLine) {
+        self.begin_job(job, batch);
+        let (glyph, tone) = end.glyph();
+        let line = format!("{glyph} {}", end.words());
+        self.send(Msg::Note(line.clone(), tone));
+        self.after.push(After::Skipped(line));
+        let mut after = batch.clone();
+        if let Some(j) = after.jobs.get_mut(after.current) {
+            j.1 = Some(end.clone());
+        }
+        self.end_job(None, &after);
+    }
+
+    /// A remark during a batch, such as a stale run lock removed: on the
+    /// screen, since the shell's text is hidden under it, and in the
+    /// current job's part of the text printed afterwards.
+    pub fn remark(&mut self, text: &str) {
+        let line = format!("{} {text}", theme::ACTION);
+        self.send(Msg::Note(line.clone(), Tone::Dim));
+        self.after.push(After::Remark(line));
+    }
+
+    /// Waits for a yes/no screen's answer. `a` (yes to the rest of the
+    /// batch) is passed on as yes, and kept for [`Reporter::yes_to_rest`].
+    fn ask(&mut self, screen: PreviewPrompt) -> Answer {
+        let (tx, rx) = mpsc::channel();
+        self.send(Msg::Ask(Box::new(screen), tx));
+        match self.wait(rx, Answer::No) {
+            Answer::YesToRest => {
+                self.yes_rest = true;
+                Answer::Yes
+            }
+            answer => answer,
+        }
     }
 
     fn close(&mut self) {
@@ -641,6 +691,73 @@ impl TuiReporter {
             }
         }
     }
+}
+
+/// The text printed once the screen has closed, in the order it was kept.
+/// The summary blocks, problems, skipped lines, remarks and batch lines go
+/// in the session's transcript too.
+fn after_text(after: &[After], colour: bool) -> String {
+    let mut out = String::new();
+    for a in after {
+        match a {
+            After::Problem(m) => {
+                let mut lines = m.lines();
+                let mut text = String::new();
+                if let Some(first) = lines.next() {
+                    text.push_str(&format!(
+                        "{} {first}\n",
+                        theme::paint(theme::FAILED, Tone::Error, colour)
+                    ));
+                }
+                for l in lines {
+                    text.push_str(&format!("{l}\n"));
+                }
+                super::session::record(&text);
+                out.push_str(&text);
+            }
+            After::Skipped(line) => {
+                let text = format!("{}\n", theme::paint(line, Tone::Warning, colour));
+                super::session::record(&text);
+                out.push_str(&text);
+            }
+            After::Preview(p) => {
+                out.push_str(&prompt::render_text(p, colour));
+                out.push('\n');
+            }
+            After::Text(text) => {
+                out.push_str(text);
+                out.push('\n');
+            }
+            After::Summary(s) => {
+                let text = block::render_text(s, colour, super::terminal_width());
+                super::session::record(&format!("{text}\n"));
+                out.push_str(&text);
+                out.push('\n');
+            }
+            After::Closing(text) => {
+                super::session::record(&format!("{text}\n"));
+                out.push_str(text);
+                out.push('\n');
+            }
+            After::Remark(line) => {
+                let text = format!("{}\n", theme::paint(line, Tone::Dim, colour));
+                super::session::record(&text);
+                out.push_str(&text);
+            }
+            After::Batch(line) => {
+                let text = line.text(colour, super::terminal_width());
+                // One blank line before it, never two.
+                let text = if out.is_empty() || out.ends_with("\n\n") {
+                    text
+                } else {
+                    format!("\n{text}")
+                };
+                super::session::record(&text);
+                out.push_str(&text);
+            }
+        }
+    }
+    out
 }
 
 impl Drop for TuiReporter {
@@ -696,11 +813,12 @@ impl Reporter for TuiReporter {
 
     fn confirm(&mut self, question: &Question) -> Answer {
         if let Question::Moves(p) = question {
-            let screen = PreviewPrompt::moves(self.title.clone(), p);
-            let (tx, rx) = mpsc::channel();
-            self.send(Msg::Ask(Box::new(screen), tx));
-            return self.wait(rx, Answer::No);
+            let screen = PreviewPrompt::moves(self.title.clone(), p).in_batch(self.batch.clone());
+            return self.ask(screen);
         }
+        // In a batch, `a` answers the plan and the merge offer, the
+        // confirmations `--yes` skips; never the safety questions.
+        let rest = self.batch.is_some() && prompt::offers_rest(question);
         let (mut body, q, default) = prompt::question(question, self.kind);
         let mut full = Vec::new();
         let verb = match question {
@@ -718,15 +836,18 @@ impl Reporter for TuiReporter {
             Question::Retry(_) => "run again",
             Question::Moves(_) => "move",
         };
-        let screen = PreviewPrompt::with_lines(self.title.clone(), body, q, default, verb)
-            .with_full_lists(full);
-        let (tx, rx) = mpsc::channel();
-        self.send(Msg::Ask(Box::new(screen), tx));
-        self.wait(rx, Answer::No)
+        let mut screen = PreviewPrompt::with_lines(self.title.clone(), body, q, default, verb)
+            .with_full_lists(full)
+            .in_batch(self.batch.clone());
+        if rest {
+            screen = screen.offer_rest();
+        }
+        self.ask(screen)
     }
 
     fn ask_folders(&mut self, kind: &str, folders: &[DeletedFolder]) -> Vec<FolderAnswer> {
-        let screen = FolderPrompt::new(self.title.clone(), kind, folders.to_vec());
+        let mut screen = FolderPrompt::new(self.title.clone(), kind, folders.to_vec());
+        screen.batch = self.batch.clone();
         let (tx, rx) = mpsc::channel();
         self.send(Msg::Folders(Box::new(screen), tx));
         self.wait(rx, vec![FolderAnswer::CancelRun; folders.len()])
@@ -806,10 +927,12 @@ impl Reporter for TuiReporter {
     }
 
     fn confirm_preview(&mut self, preview: &Preview) -> Answer {
-        let (tx, rx) = mpsc::channel();
-        let screen = PreviewPrompt::new(self.title.clone(), preview.clone());
-        self.send(Msg::Ask(Box::new(screen), tx));
-        self.wait(rx, Answer::No)
+        let mut screen =
+            PreviewPrompt::new(self.title.clone(), preview.clone()).in_batch(self.batch.clone());
+        if self.batch.is_some() {
+            screen = screen.offer_rest();
+        }
+        self.ask(screen)
     }
 
     fn problem(&mut self, message: &str) {
@@ -840,6 +963,10 @@ impl Reporter for TuiReporter {
             tone,
         ));
         self.after.push(After::Summary(Box::new(summary.clone())));
+    }
+
+    fn yes_to_rest(&self) -> bool {
+        self.yes_rest
     }
 }
 
@@ -873,6 +1000,7 @@ fn screen(
                 Ok(msg) => {
                     dirty = true;
                     match msg {
+                        Msg::Job(job, batch) => model.next_job(&job, batch),
                         Msg::Start(d) => model.start(&d),
                         Msg::Step(s) => {
                             model.step = s;
@@ -1326,5 +1454,53 @@ mod tests {
         assert_eq!(crate::ui::width(&nfd), 20);
         assert!(nfd.starts_with("Cafe\u{301}/"));
         assert_eq!(fit("abc", 0), "");
+    }
+
+    /// A run screen with no thread behind it, for what is printed after.
+    fn offline() -> TuiReporter {
+        let (tx, _) = mpsc::channel();
+        TuiReporter {
+            tx,
+            thread: None,
+            after: Vec::new(),
+            dry_run: false,
+            title: "Run x".into(),
+            kind: "local",
+            batch: None,
+            job_start: 0,
+            yes_rest: false,
+        }
+    }
+
+    /// Each job's part of the text after a batch starts with the batch
+    /// line as the job left it; a remark (a stale run lock removed) stays
+    /// in its job's part.
+    #[test]
+    fn a_batch_prints_each_jobs_part_under_its_line() {
+        let mut line = BatchLine::new(&["documents".into(), "photos".into()]);
+        let mut r = offline();
+        r.begin_job("documents", &line);
+        r.after.push(After::Text("documents block".into()));
+        line.jobs[0].1 = Some(JobEnd::Ok);
+        r.end_job(None, &line);
+        line.current = 1;
+        r.begin_job("photos", &line);
+        r.remark("Removed a stale run lock left by process 99998, which is no longer running (x).");
+        r.after.push(After::Text("photos block".into()));
+        line.jobs[1].1 = Some(JobEnd::Ok);
+        r.end_job(Some("photos closing".into()), &line);
+        let text = after_text(&r.after, false);
+        assert_eq!(
+            text.lines().collect::<Vec<_>>(),
+            [
+                "Several jobs · job 1 of 2 · documents ✓ · photos next",
+                "documents block",
+                "",
+                "Several jobs · job 2 of 2 · documents ✓ · photos ✓",
+                "→ Removed a stale run lock left by process 99998, which is no longer running (x).",
+                "photos block",
+                "photos closing",
+            ]
+        );
     }
 }

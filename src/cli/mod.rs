@@ -43,7 +43,7 @@ pub enum Command {
     Accounts(accounts::AccountsArgs),
     /// Manage sync jobs
     Jobs(jobs::JobsArgs),
-    /// Run a job: all its destinations in order, or one
+    /// Run a job: all its destinations in order, or one; or several jobs, one after another
     Run(run::RunArgs),
     /// Show the last run of each destination
     Status(status::StatusArgs),
@@ -230,13 +230,20 @@ async fn menu_item(choice: ui::menu::Choice, paths: &Paths, rclone: &Rclone) -> 
     Ok(match choice {
         Choice::Quit => false,
         Choice::RunJob => match ConfigFile::load(&paths.config_file()) {
-            Ok(file) if !file.config.jobs.is_empty() => match run::pick_job(&file.config).await? {
-                Some(name) => {
-                    run::run_job(paths, rclone, Some(&name), &run::Options::default()).await?;
-                    true
+            Ok(file) if !file.config.jobs.is_empty() => {
+                match run::pick_job(paths, &file.config).await? {
+                    Some(run::Chosen::Job(name)) => {
+                        run::run_job(paths, rclone, Some(&name), &run::Options::default()).await?;
+                        true
+                    }
+                    Some(run::Chosen::Several(names)) => {
+                        run::run_batch(paths, rclone, Some(names), &run::Options::default())
+                            .await?;
+                        true
+                    }
+                    None => false,
                 }
-                None => false,
-            },
+            }
             // Says why there is nothing to run.
             _ => {
                 run::run_job(paths, rclone, None, &run::Options::default()).await?;
@@ -524,7 +531,7 @@ mod tests {
         let Some(Command::Run(args)) = cli.command else {
             panic!("expected run");
         };
-        assert_eq!(args.job.as_deref(), Some("documents"));
+        assert_eq!(args.jobs, ["documents"]);
         assert!(args.yes);
         assert_eq!(args.folder_deletes, Some(run::FolderDeletes::Keep));
     }

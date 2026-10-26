@@ -6,6 +6,48 @@ versioning; the release workflow publishes a version when its tag (such as
 the Unreleased section to `## <version> - <date>`, which dist uses as the
 release notes.
 
+## Unreleased
+
+### Several jobs, one after another
+
+- **Run a job** (and `onefolder run` on its own) ends its list with
+  `Several jobs, one after another…` when there are two jobs or more. It
+  runs all of them, or the ones you tick on a selection screen (Space
+  ticks, `a` all, `n` none, Enter starts); the ticks are remembered for
+  next time, and each job shows what the Jobs list would warn about, such
+  as a drive not mounted.
+- `onefolder run documents records` runs those jobs and `onefolder run
+  --all` runs every job, one after another in config order. `run --all
+  --yes` is the form for launchd, systemd and Task Scheduler, and the
+  README's schedule examples use it.
+- Each job runs exactly as it would alone. A job that fails its checks is
+  recorded and the next one starts; a job whose last run is still going
+  is skipped (`another run in progress`); only Ctrl-C stops the batch, and
+  the jobs not yet started are recorded as `not run, the batch was
+  stopped`.
+- Every screen of a batch has a line at the top saying which job of how
+  many is running and how the others ended: `Several jobs · job 2 of 3 ·
+  documents ✓ · records · photos next`. Without a terminal, `Job 2 of 3:
+  records` is printed before each job.
+- The preview asks `Continue? [Y/n/a]`: `a` is yes to this and every
+  remaining preview and plan confirmation of the batch. The question
+  about moved files and the folder prompt still ask.
+- The batch ends with a closing summary: a line per job, and under it a
+  line per destination with its outcome and reason. The exit code follows
+  the usual rule over every destination, and is 2 when no job ran at all
+  (each skipped because another run held it, or because it has no
+  destinations).
+- With `--json`, every event of a batch carries `batch: {index, of}`, a
+  job that does not run sends `job-skipped`, and a final `batch-done`
+  lists every job with its destinations and the batch's exit code. A
+  single job's output is unchanged.
+- `--dest` belongs to one job and is refused with several; a job name that
+  does not exist refuses the whole batch before anything runs. A name
+  given twice runs once, as a single job; `--all` is a batch even with one
+  job. `--resync` and `--folder-deletes` apply to every job of a batch.
+- A closing summary no longer repeats `not confirmed` after a destination
+  that was not confirmed.
+
 ## 0.2.1 - 2026-10-26
 
 ### Run screen

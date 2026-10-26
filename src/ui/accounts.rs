@@ -350,6 +350,15 @@ pub struct Picker {
     pub title: String,
     /// Each item: the value shown in the first column, and a description.
     pub items: Vec<(String, String)>,
+    /// A row of its own after the items, outside their columns, such as
+    /// `Several jobs, one after another…`; chosen as `items.len()`.
+    pub extra: Option<String>,
+    /// A line under the title saying what the choice is about, set off by
+    /// blank lines.
+    pub note: Option<String>,
+    /// What Esc does, for the keys line: `cancel`, or `back` where Esc goes
+    /// back to an earlier list.
+    pub esc: &'static str,
     pub cursor: usize,
     /// The terminal's width: every line is fitted to it, so the inline
     /// redraw (which counts lines) never meets a wrapped one.
@@ -368,13 +377,21 @@ impl Picker {
         Picker {
             title: title.to_string(),
             items,
+            extra: None,
+            note: None,
+            esc: "cancel",
             cursor: 0,
             width: None,
         }
     }
 
+    /// Rows to choose from: the items and the extra row.
+    fn rows(&self) -> usize {
+        self.items.len() + usize::from(self.extra.is_some())
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<Picked> {
-        let last = self.items.len().saturating_sub(1);
+        let last = self.rows().saturating_sub(1);
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
                 self.cursor = self.cursor.saturating_sub(1);
@@ -384,7 +401,7 @@ impl Picker {
                 self.cursor = (self.cursor + 1).min(last);
                 None
             }
-            KeyCode::Enter if !self.items.is_empty() => Some(Picked::Chosen(self.cursor)),
+            KeyCode::Enter if self.rows() > 0 => Some(Picked::Chosen(self.cursor)),
             KeyCode::Esc | KeyCode::Char('q') => Some(Picked::Cancelled),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Some(Picked::Cancelled)
@@ -393,8 +410,8 @@ impl Picker {
         }
     }
 
-    /// The picker's lines as toned segments: the title, the items with
-    /// the cursor on one, and the keys.
+    /// The picker's lines as toned segments: the title, the note, the
+    /// items with the cursor on one, the extra row, and the keys.
     pub fn segments(&self) -> Vec<Vec<super::Segment>> {
         let width = self
             .items
@@ -416,6 +433,17 @@ impl Picker {
             s("  ", Tone::Plain),
             s(&fit(&self.title, line_max), Tone::Bold),
         ]];
+        if let Some(note) = &self.note {
+            lines.push(Vec::new());
+            lines.push(vec![s(
+                &fit(
+                    &format!("  {note}"),
+                    self.width.map(|w| w.saturating_sub(1)),
+                ),
+                Tone::Plain,
+            )]);
+            lines.push(Vec::new());
+        }
         for (i, (value, detail)) in self.items.iter().enumerate() {
             let padded = fit(&format!("{value:<width$}"), line_max);
             let detail = fit(detail, room);
@@ -434,14 +462,31 @@ impl Picker {
                 ]);
             }
         }
+        if let Some(extra) = &self.extra {
+            let text = fit(extra, line_max);
+            if self.cursor == self.items.len() {
+                lines.push(vec![
+                    s("  ", Tone::Plain),
+                    s(theme::CURSOR, Tone::Accent),
+                    s(" ", Tone::Plain),
+                    s(&text, Tone::Accent),
+                ]);
+            } else {
+                lines.push(vec![s(&format!("    {text}"), Tone::Plain)]);
+            }
+        }
+        if self.note.is_some() {
+            lines.push(Vec::new());
+        }
         lines.push(vec![
             s("  ", Tone::Plain),
             s(
                 &fit(
                     &format!(
-                        "{}{} j/k move {dot} enter select {dot} esc cancel",
+                        "{}{} j/k move {dot} enter select {dot} esc {}",
                         theme::UP,
                         theme::DOWN,
+                        self.esc,
                         dot = theme::DOT
                     ),
                     line_max,
@@ -453,26 +498,72 @@ impl Picker {
     }
 
     /// The picker's lines as text, painted when `colour` is set.
+    #[cfg(test)]
     pub fn lines(&self, colour: bool) -> Vec<String> {
-        self.segments()
-            .iter()
-            .map(|line| {
-                line.iter()
-                    .map(|(text, tone)| theme::paint(text, *tone, colour))
-                    .collect()
-            })
-            .collect()
+        painted(&self.segments(), colour)
     }
 
     /// The line left in place of the list once item `i` is chosen:
-    /// `  Run which job?: documents`, with its newline.
+    /// `  Run which job?: documents`, with its newline. None for the extra
+    /// row, which leads to another list that leaves its own.
     pub fn answer_line(&self, i: usize, colour: bool) -> String {
+        if self.extra.is_some() && i == self.items.len() {
+            return String::new();
+        }
         let value = self.items.get(i).map(|(v, _)| v.as_str()).unwrap_or("");
         format!(
             "  {} {}\n",
             theme::paint(&format!("{}:", self.title), Tone::Bold, colour),
             value
         )
+    }
+}
+
+/// Toned lines as text, painted when `colour` is set.
+fn painted(lines: &[Vec<super::Segment>], colour: bool) -> Vec<String> {
+    lines
+        .iter()
+        .map(|line| {
+            line.iter()
+                .map(|(text, tone)| theme::paint(text, *tone, colour))
+                .collect()
+        })
+        .collect()
+}
+
+/// A small list drawn inline under the text printed so far, on the shell
+/// or under the session's page: the [`Picker`], and the batch's job
+/// chooser (`ui::batch::ChooseJobs`).
+pub trait Inline {
+    /// What choosing gives.
+    type Out;
+    /// Fits every line to the terminal's width.
+    fn set_width(&mut self, width: Option<usize>);
+    /// The lines as toned segments.
+    fn segments(&self) -> Vec<Vec<super::Segment>>;
+    /// Applies one key: `Some(Some(out))` once chosen, `Some(None)` when
+    /// cancelled (Esc, q or Ctrl-C), `None` to carry on.
+    fn key(&mut self, key: KeyEvent) -> Option<Option<Self::Out>>;
+    /// The line left in place of the list once chosen, with its newline.
+    fn answer_line(&self, out: &Self::Out, colour: bool) -> String;
+}
+
+impl Inline for Picker {
+    type Out = usize;
+    fn set_width(&mut self, width: Option<usize>) {
+        self.width = width;
+    }
+    fn segments(&self) -> Vec<Vec<super::Segment>> {
+        Picker::segments(self)
+    }
+    fn key(&mut self, key: KeyEvent) -> Option<Option<usize>> {
+        self.handle_key(key).map(|p| match p {
+            Picked::Chosen(i) => Some(i),
+            Picked::Cancelled => None,
+        })
+    }
+    fn answer_line(&self, out: &usize, colour: bool) -> String {
+        Picker::answer_line(self, *out, colour)
     }
 }
 
@@ -488,12 +579,19 @@ impl Drop for RawGuard {
 
 /// Shows `picker` inline on the terminal until the user chooses or
 /// cancels. Afterwards the list is replaced by one line with the answer.
-pub fn pick(mut picker: Picker) -> Result<Option<usize>> {
+pub fn pick(picker: Picker) -> Result<Option<usize>> {
+    show_inline(picker)
+}
+
+/// Shows an [`Inline`] list on the terminal until the user chooses or
+/// cancels. Afterwards the list is replaced by one line with the answer.
+/// Inside the session it draws under the page instead.
+pub fn show_inline<T: Inline>(mut list: T) -> Result<Option<T::Out>> {
     if super::session::is_open() {
-        return super::session::pick_on_screen(picker);
+        return super::session::inline_on_screen(list);
     }
     let colour = theme::colour_on_stdout();
-    picker.width = terminal::size().ok().map(|(w, _)| usize::from(w));
+    list.set_width(terminal::size().ok().map(|(w, _)| usize::from(w)));
     let mut out = io::stdout();
     terminal::enable_raw_mode().context("could not read keys from the terminal")?;
     let _guard = RawGuard;
@@ -508,7 +606,7 @@ pub fn pick(mut picker: Picker) -> Result<Option<usize>> {
                 terminal::Clear(terminal::ClearType::FromCursorDown)
             )?;
         }
-        let lines = picker.lines(colour);
+        let lines = painted(&list.segments(), colour);
         for line in &lines {
             queue!(
                 out,
@@ -536,7 +634,7 @@ pub fn pick(mut picker: Picker) -> Result<Option<usize>> {
         if key.kind != KeyEventKind::Press {
             continue;
         }
-        if let Some(done) = picker.handle_key(key) {
+        if let Some(done) = list.key(key) {
             break done;
         }
     };
@@ -547,13 +645,13 @@ pub fn pick(mut picker: Picker) -> Result<Option<usize>> {
         terminal::Clear(terminal::ClearType::FromCursorDown)
     )?;
     match result {
-        Picked::Chosen(i) => {
-            let line = picker.answer_line(i, colour);
+        Some(chosen) => {
+            let line = list.answer_line(&chosen, colour);
             queue!(out, crossterm::style::Print(line.replace('\n', "\r\n")))?;
             out.flush()?;
-            Ok(Some(i))
+            Ok(Some(chosen))
         }
-        Picked::Cancelled => {
+        None => {
             out.flush()?;
             Ok(None)
         }
@@ -1203,5 +1301,43 @@ mod tests {
         fewer.remove(0);
         s.set_entries(fewer, None);
         assert_eq!(s.selected().as_deref(), Some("old-laptop"));
+    }
+
+    #[test]
+    fn the_run_picker_ends_with_several_jobs() {
+        let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        let mut picker = Picker::new(
+            "Run which job?",
+            [
+                ("documents", "~/Documents"),
+                ("engineering", "~/Engineering"),
+                ("records", "~/Records"),
+                ("photos", "~/Pictures"),
+            ]
+            .iter()
+            .map(|(n, s)| (n.to_string(), s.to_string()))
+            .collect(),
+        );
+        picker.extra = Some(crate::ui::batch::SEVERAL.into());
+        picker.esc = "back";
+        for _ in 0..10 {
+            picker.handle_key(key(KeyCode::Down));
+        }
+        assert_eq!(picker.cursor, 4, "the last row is the extra one");
+        snapshot!("run_picker_several", picker.lines(false).join("\n"));
+        assert_eq!(
+            picker.handle_key(key(KeyCode::Enter)),
+            Some(Picked::Chosen(4))
+        );
+        // It leads to another list, so it leaves no answer line.
+        assert_eq!(picker.answer_line(4, false), "");
+        assert_eq!(
+            picker.answer_line(1, false),
+            "  Run which job?: engineering\n"
+        );
+        picker.width = Some(30);
+        for line in picker.lines(false) {
+            assert!(crate::ui::width(&line) < 30, "{line}");
+        }
     }
 }

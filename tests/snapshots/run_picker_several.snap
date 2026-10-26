@@ -1,0 +1,11 @@
+---
+source: src/ui/accounts.rs
+expression: "picker.lines(false).join(\"\\n\")"
+---
+  Run which job?
+    documents     ~/Documents
+    engineering   ~/Engineering
+    records       ~/Records
+    photos        ~/Pictures
+  ➤ Several jobs, one after another…
+  ↑↓ j/k move · enter select · esc back

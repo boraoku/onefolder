@@ -1,0 +1,20 @@
+---
+source: src/ui/batch.rs
+expression: value
+---
+"                                        "
+"  Several jobs · job 2 of 3 …           "
+"                                        "
+"  Run records                           "
+"                                        "
+"  → …tup:Records   one-way   destinati  "
+"                                        "
+"    Listing                             "
+"    ⠋                                   "
+"                                        "
+"                                        "
+"                                        "
+"                                        "
+"                                        "
+"  ctrl-c stop                           "
+"                                        "

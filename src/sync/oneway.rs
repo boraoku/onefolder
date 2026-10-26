@@ -672,7 +672,7 @@ pub async fn run_destination(
             );
         }
         let answer = match answer {
-            Answer::Yes => MovesAnswer::Move,
+            Answer::Yes | Answer::YesToRest => MovesAnswer::Move,
             Answer::No => MovesAnswer::Copy,
         };
         preview.choose_moves(choice_of(answer));

@@ -1,0 +1,12 @@
+---
+source: src/ui/batch.rs
+expression: value
+---
+  Run several jobs
+
+  4 jobs, run one after another in the order of your config.
+
+  ➤ All 4 jobs   
+    Choose jobs…
+
+  ↑↓ j/k move · enter select · esc back

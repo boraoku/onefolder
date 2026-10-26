@@ -436,7 +436,7 @@ fn last_run_view(r: &RunRecord) -> LastRun {
     }
 }
 
-fn job_views(jobs: &[Job], state: &State) -> Vec<JobView> {
+pub(crate) fn job_views(jobs: &[Job], state: &State) -> Vec<JobView> {
     jobs.iter()
         .map(|job| JobView {
             name: job.name.clone(),

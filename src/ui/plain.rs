@@ -1,6 +1,7 @@
 //! The plain-text [`Reporter`], for runs whose output is not a terminal:
 //! one line per file, a stats line every few seconds, the preview, and the
-//! summary block. Colour only when stdout is a terminal.
+//! summary block. Colour only when stdout is a terminal. In a batch of
+//! jobs, `Job 2 of 3: records` comes before each job.
 
 use std::io::{BufRead, Write};
 use std::time::{Duration, Instant};
@@ -53,6 +54,13 @@ pub struct PlainReporter<W: Write> {
     /// The question about moved files was asked for this destination, so
     /// the confirmation first says what the answer changed.
     moves_asked: bool,
+    /// Part of a batch of jobs: the preview and plan confirmations offer
+    /// `a`, yes to the rest of the batch.
+    batch: bool,
+    /// A confirmation of the batch was answered `a`.
+    yes_rest: bool,
+    /// Where answers are read from: stdin, or a script in tests.
+    input: Option<Box<dyn BufRead + Send>>,
 }
 
 impl PlainReporter<std::io::Stdout> {
@@ -78,7 +86,59 @@ impl<W: Write> PlainReporter<W> {
             blank: true,
             newline: true,
             moves_asked: false,
+            batch: false,
+            yes_rest: false,
+            input: None,
         }
+    }
+
+    /// Reads answers from `input` instead of stdin.
+    #[cfg(test)]
+    pub fn answering(mut self, input: &str) -> Self {
+        self.input = Some(Box::new(std::io::Cursor::new(input.as_bytes().to_vec())));
+        self
+    }
+
+    /// The next job of a batch: `Job 2 of 3: records`, after one blank
+    /// line (never two), then the job's output as a run of it alone.
+    pub fn begin_job(&mut self, index: usize, of: usize, job: &str) {
+        self.batch = true;
+        self.job = job.to_string();
+        self.titled = false;
+        let gap = if self.blank { "" } else { "\n" };
+        let heading = self.p(&crate::ui::batch::job_heading(index, of, job), Tone::Bold);
+        self.write(&format!("{gap}{heading}\n"));
+    }
+
+    /// A job of the batch that does not run, under its heading:
+    /// `◎ skipped · another run in progress`.
+    pub fn job_not_run(&mut self, end: &crate::ui::batch::JobEnd) {
+        let line = crate::ui::batch::not_run_line(end, self.colour);
+        self.write(&line);
+    }
+
+    /// Asks a question that a batch may answer with `a`.
+    fn ask(&mut self, question: &str, default: Answer, rest: bool) -> Answer {
+        let q = if rest {
+            format!(
+                "{}{}",
+                self.p(&prompt::rest_question(question), Tone::Accent),
+                self.p(&format!("   {} ", prompt::REST_NOTE), Tone::Dim)
+            )
+        } else {
+            self.p(question, Tone::Accent)
+        };
+        self.write(&q);
+        let answer = match self.read_line() {
+            None => Answer::No,
+            Some(line) if rest => prompt::parse_rest_answer(&line, default),
+            Some(line) => prompt::parse_answer_or(&line, default),
+        };
+        if answer == Answer::YesToRest {
+            self.yes_rest = true;
+            return Answer::Yes;
+        }
+        answer
     }
 
     /// Writes the job's closing summary, after one blank line (never two).
@@ -111,10 +171,17 @@ impl<W: Write> PlainReporter<W> {
     /// Reads a line from stdin; `None` at end of input.
     fn read_line(&mut self) -> Option<String> {
         let mut line = String::new();
-        let mut read = || std::io::stdin().lock().read_line(&mut line);
-        let got = match tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()) {
-            Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(read),
-            _ => read(),
+        let got = match &mut self.input {
+            Some(input) => input.read_line(&mut line),
+            None => {
+                let mut read = || std::io::stdin().lock().read_line(&mut line);
+                match tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()) {
+                    Ok(tokio::runtime::RuntimeFlavor::MultiThread) => {
+                        tokio::task::block_in_place(read)
+                    }
+                    _ => read(),
+                }
+            }
         };
         match got {
             Ok(0) | Err(_) => {
@@ -314,12 +381,7 @@ impl<W: Write> Reporter for PlainReporter<W> {
             let text = prompt::lines_text(&prompt::moves_answer_lines(preview), self.colour);
             self.write(&format!("\n{text}"));
         }
-        let q = self.p(prompt::QUESTION, Tone::Accent);
-        self.write(&q);
-        match self.read_line() {
-            None => Answer::No,
-            Some(line) => prompt::parse_answer(&line),
-        }
+        self.ask(prompt::QUESTION, Answer::Yes, self.batch)
     }
 
     fn plan(&mut self, plan: &Plan) {
@@ -339,12 +401,10 @@ impl<W: Write> Reporter for PlainReporter<W> {
         let (lines, q, default) = prompt::question(question, self.kind);
         let text = prompt::lines_text(&lines, self.colour);
         self.write(&text);
-        let q = self.p(&q, Tone::Accent);
-        self.write(&q);
-        match self.read_line() {
-            None => Answer::No,
-            Some(line) => prompt::parse_answer_or(&line, default),
-        }
+        // In a batch, `a` answers the plan and the merge offer, the
+        // confirmations `--yes` skips; never the safety questions.
+        let rest = self.batch && prompt::offers_rest(question);
+        self.ask(&q, default, rest)
     }
 
     /// Said only when not asked: an answer typed at the question needs no
@@ -502,6 +562,10 @@ impl<W: Write> Reporter for PlainReporter<W> {
     fn destination_finished(&mut self, summary: &Summary) {
         let text = block::render_text(summary, self.colour, self.width);
         self.write(&format!("\n{text}\n"));
+    }
+
+    fn yes_to_rest(&self) -> bool {
+        self.yes_rest
     }
 }
 
@@ -678,5 +742,68 @@ mod tests {
              \x20 Copying...\n\
              \x20 0 B/s · 3 of 3 files\n"
         );
+    }
+
+    #[test]
+    fn each_job_of_a_batch_has_its_heading() {
+        use crate::ui::batch::JobEnd;
+        let mut r = PlainReporter::new(Vec::new(), "documents", false);
+        r.begin_job(1, 3, "documents");
+        r.destination_started(&DestinationInfo {
+            job: "documents".into(),
+            id: "d-91c0".into(),
+            kind: "local",
+            display: "/Volumes/Backup/Documents".into(),
+            mode: Mode::OneWay,
+            index: 1,
+            of: 1,
+            dry_run: false,
+        });
+        r.closing("closing\n");
+        r.begin_job(2, 3, "records");
+        r.job_not_run(&JobEnd::Skipped("another run in progress".into()));
+        r.begin_job(3, 3, "photos");
+        r.job_not_run(&JobEnd::NotRun);
+        let text = String::from_utf8(r.into_inner()).unwrap();
+        assert_eq!(
+            text,
+            "Job 1 of 3: documents\nRun documents\n\n→ /Volumes/Backup/Documents   one-way\n\
+             \nclosing\n\nJob 2 of 3: records\n◎ skipped · another run in progress\n\
+             \nJob 3 of 3: photos\n◎ not run, the batch was stopped\n"
+        );
+    }
+
+    /// In a batch the preview asks `[Y/n/a]`; `a` is yes, and kept as yes
+    /// to the rest. The moved-files question has no `a`.
+    #[test]
+    fn a_batch_question_takes_a() {
+        let mut r = PlainReporter::new(Vec::new(), "documents", false).answering("a\nall\na\n");
+        r.begin_job(1, 2, "documents");
+        assert!(!r.yes_to_rest());
+        assert_eq!(r.confirm_preview(&Preview::default()), Answer::Yes);
+        assert!(r.yes_to_rest());
+        // Not offered on the moved-files question: `a` is no there.
+        let mut r2 = PlainReporter::new(Vec::new(), "documents", false).answering("a\n");
+        r2.begin_job(1, 2, "documents");
+        assert_eq!(
+            r2.confirm(&Question::Moves(&Preview::default())),
+            Answer::No
+        );
+        assert!(!r2.yes_to_rest());
+        let text = String::from_utf8(r2.into_inner()).unwrap();
+        assert!(!text.contains("[Y/n/a]"), "{text}");
+        let text = String::from_utf8(r.into_inner()).unwrap();
+        assert!(
+            text.ends_with(
+                "  Continue? [Y/n/a]   n skips this destination · a yes to the rest of the batch "
+            ),
+            "{text}"
+        );
+        // A single job: `a` is no, and the question is as before.
+        let mut r = PlainReporter::new(Vec::new(), "documents", false).answering("a\n");
+        assert_eq!(r.confirm_preview(&Preview::default()), Answer::No);
+        assert!(!r.yes_to_rest());
+        let text = String::from_utf8(r.into_inner()).unwrap();
+        assert_eq!(text, prompt::QUESTION);
     }
 }

@@ -253,8 +253,25 @@ fn check_shape(v: &Value) {
         }
     };
     let event = v["event"].as_str().expect("every line has an event");
+    // In a batch every event but `batch-done` carries the job's place.
+    if let Some(b) = v.get("batch") {
+        assert!(b["index"].is_u64() && b["of"].is_u64(), "{v}");
+        assert!(b["index"].as_u64() <= b["of"].as_u64(), "{v}");
+    }
     match event {
         "refused" => has(&["code", "message"]),
+        "job-skipped" => has(&["job", "code", "reason", "batch"]),
+        "batch-done" => {
+            has(&["ok", "exit_code", "jobs"]);
+            assert!(v.get("batch").is_none(), "{v}");
+            for j in v["jobs"].as_array().unwrap() {
+                assert!(j["job"].is_string() && j["outcome"].is_string(), "{j}");
+                assert!(
+                    j.get("reason").is_some() && j["destinations"].is_array(),
+                    "{j}"
+                );
+            }
+        }
         "done" => {
             has(&["job", "ok", "exit_code", "destinations"]);
             for d in v["destinations"].as_array().unwrap() {
@@ -4334,13 +4351,18 @@ struct Pty {
 
 impl Pty {
     fn start(w: &World, path: &str) -> Pty {
+        Pty::start_with(w, path, "")
+    }
+
+    /// `onefolder` with `args` (a shell word list) in the pseudo-terminal.
+    fn start_with(w: &World, path: &str, args: &str) -> Pty {
         let mut cmd = StdCommand::new("/usr/bin/script");
         for (k, v) in w.env() {
             cmd.env(k, v);
         }
         cmd.env("PATH", path);
         let shell = format!(
-            "stty rows 30 cols 120; {}; echo EXIT=$?; sleep 5",
+            "stty rows 30 cols 120; {} {args}; echo EXIT=$?; sleep 5",
             env!("CARGO_BIN_EXE_onefolder")
         );
         let mut child = KillOnDrop(
@@ -4597,4 +4619,450 @@ fn ctrl_c_in_the_onedrive_browser_leaves_no_rclone_behind() {
     let left = processes(&format!("sleep {marker}"));
     let all = p.finish();
     assert_eq!(left, 0, "rclone size outlived OneFolder: {all}");
+}
+
+// ------------------------------------------------------- several jobs
+
+impl World {
+    /// Three jobs, run one after another: `documents` (the usual local
+    /// destination), `records` (a local destination, then one on a drive
+    /// that is not mounted) and `photos` (a local destination).
+    fn three_jobs(&self) {
+        for d in ["src2", "src3", "dst2", "dst3", "Backup/Records"] {
+            fs::create_dir_all(self.path(d)).unwrap();
+        }
+        let text = format!(
+            r#"version = 1
+
+[[jobs]]
+name = "documents"
+source = "{src}"
+{documents}
+[[jobs]]
+name = "records"
+source = "{src2}"
+{records}
+  [[jobs.destinations]]
+  id = "d-0003"
+  type = "local"
+  path = "{backup}/Records"
+  volume_uuid = "A1B2C3D4-0000-4E5F-8A9B-000000000001"
+  volume_name = "Backup"
+  mount_point = "{backup}"
+
+[[jobs]]
+name = "photos"
+source = "{src3}"
+{photos}"#,
+            src = self.path("src").display(),
+            src2 = self.path("src2").display(),
+            src3 = self.path("src3").display(),
+            backup = self.path("Backup").display(),
+            documents = self.local_destination(LOCAL, &self.path("dst")),
+            records = self.local_destination("d-0002", &self.path("dst2")),
+            photos = self.local_destination("d-0004", &self.path("dst3")),
+        );
+        fs::write(self.path("config/config.toml"), text).unwrap();
+        self.write("src/a.txt", "a");
+        self.write("src2/b.txt", "b");
+        self.write("src3/c.txt", "c");
+    }
+
+    /// A live process whose name says OneFolder holds `job`'s run lock, as
+    /// another run of it would. The lock goes with the returned guard.
+    fn hold_lock(&self, job: &str) -> KillOnDrop {
+        // A link, so ps names the process after it (a copy of a system
+        // binary is not allowed to run on macOS).
+        let holder = self.path("onefolder-holder");
+        if !holder.exists() {
+            std::os::unix::fs::symlink("/bin/sleep", &holder).unwrap();
+        }
+        let child = StdCommand::new(&holder).arg("120").spawn().unwrap();
+        fs::create_dir_all(self.path("data/runs")).unwrap();
+        fs::write(
+            self.path(&format!("data/runs/{job}.lock")),
+            format!(r#"{{"pid":{}}}"#, child.id()),
+        )
+        .unwrap();
+        KillOnDrop(child)
+    }
+}
+
+/// `run --all`: each job in turn, in config order, with the batch's place
+/// on every event. A destination whose drive is not mounted fails and
+/// the next one runs; a job whose run lock is held is skipped and its
+/// lock left alone; the batch ends with `batch-done` and exit code 1.
+#[test]
+fn a_batch_runs_each_job_in_turn() {
+    if !enabled() {
+        return;
+    }
+    let w = World::new();
+    w.three_jobs();
+    let _held = w.hold_lock("photos");
+    let out = w
+        .onefolder()
+        .args(["run", "--all", "--yes", "--json"])
+        .output()
+        .unwrap();
+    let lines = ndjson(&out.stdout);
+    for l in &lines {
+        check_shape(l);
+    }
+    assert_eq!(out.status.code(), Some(1), "{lines:#?}");
+    // Every line but the last carries the batch, jobs in config order.
+    let places: Vec<(String, u64)> = lines[..lines.len() - 1]
+        .iter()
+        .map(|l| {
+            assert_eq!(l["batch"]["of"], 3, "{l}");
+            (
+                l["job"].as_str().unwrap().to_string(),
+                l["batch"]["index"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    let mut seen: Vec<(String, u64)> = places.clone();
+    seen.dedup();
+    assert_eq!(
+        seen,
+        [
+            ("documents".to_string(), 1),
+            ("records".to_string(), 2),
+            ("photos".to_string(), 3)
+        ]
+    );
+    assert_eq!(summary_of(&lines, LOCAL)["outcome"], "ok");
+    assert_eq!(summary_of(&lines, "d-0002")["outcome"], "ok");
+    assert_eq!(summary_of(&lines, "d-0003")["outcome"], "failed");
+    let skipped: Vec<&Value> = lines
+        .iter()
+        .filter(|l| l["event"] == "job-skipped")
+        .collect();
+    assert_eq!(skipped.len(), 1, "{lines:#?}");
+    assert_eq!(skipped[0]["job"], "photos");
+    assert_eq!(skipped[0]["code"], "locked");
+    assert_eq!(skipped[0]["reason"], "another run in progress");
+    // One `done` per job that ran.
+    let dones: Vec<&Value> = lines.iter().filter(|l| l["event"] == "done").collect();
+    assert_eq!(dones.len(), 2);
+    assert_eq!(dones[1]["exit_code"], 1);
+    let last = lines.last().unwrap();
+    assert_eq!(
+        *last,
+        serde_json::json!({"event": "batch-done", "ok": false, "exit_code": 1, "jobs": [
+            {"job": "documents", "outcome": "ok", "reason": null, "destinations": [
+                {"destination": LOCAL, "outcome": "ok", "reason": null}]},
+            {"job": "records", "outcome": "partial", "reason": null, "destinations": [
+                {"destination": "d-0002", "outcome": "ok", "reason": null},
+                {"destination": "d-0003", "outcome": "failed",
+                 "reason": "Backup drive not mounted"}]},
+            {"job": "photos", "outcome": "skipped", "reason": "another run in progress",
+             "destinations": [{"destination": "d-0004", "outcome": "skipped",
+                               "reason": "another run in progress"}]},
+        ]})
+    );
+    assert!(w.path("dst/a.txt").exists() && w.path("dst2/b.txt").exists());
+    assert!(!w.path("dst3/c.txt").exists(), "the held job did not run");
+    assert!(!w.path("Backup/Records/b.txt").exists());
+    // Each lock went with its job; the held one is untouched.
+    assert!(!w.path("data/runs/documents.lock").exists());
+    assert!(!w.path("data/runs/records.lock").exists());
+    assert!(w.path("data/runs/photos.lock").exists());
+    assert_no_rclone_left(&w);
+}
+
+/// The same batch with plain output: `Job 2 of 3: records` before each
+/// job, named in any order but run in config order, and the closing
+/// summary of every job.
+#[test]
+fn a_batch_in_plain_text() {
+    if !enabled() {
+        return;
+    }
+    let w = World::new();
+    w.three_jobs();
+    let _held = w.hold_lock("photos");
+    let out = w
+        .onefolder()
+        .args(["run", "photos", "records", "documents", "--yes"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    let at = |needle: &str| {
+        text.find(needle)
+            .unwrap_or_else(|| panic!("no {needle:?} in:\n{text}"))
+    };
+    assert!(
+        at("Job 1 of 3: documents\nRun documents\n") < at("Job 2 of 3: records\nRun records\n")
+    );
+    assert!(
+        at("Job 2 of 3: records") < at("Job 3 of 3: photos\n◎ skipped · another run in progress\n")
+    );
+    // records' own closing summary, then the batch's.
+    assert!(
+        at("records   2 destinations · 1 ok · 1 failed")
+            < at("Several jobs   3 jobs · 3 destinations")
+    );
+    let closing = &text[at("Several jobs   3 jobs")..];
+    for line in [
+        "  documents   ✓ ok",
+        "  records     ◎ partial",
+        "  photos      ◎ skipped · another run in progress",
+    ] {
+        assert!(closing.contains(line), "{line:?} in:\n{closing}");
+    }
+    assert!(
+        closing.contains("one-way   ✗ failed · Backup drive not mounted"),
+        "{closing}"
+    );
+    assert!(
+        text.ends_with("======================================================================\n"),
+        "{text}"
+    );
+
+    // --dest belongs to one job; an unknown job refuses the whole batch.
+    let out = w
+        .onefolder()
+        .args(["run", "documents", "records", "--dest", LOCAL, "--yes"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--dest runs one destination of one job"));
+    fs::remove_file(w.path("dst/a.txt")).unwrap();
+    let out = w
+        .onefolder()
+        .args(["run", "documents", "nope", "--yes", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    let lines = ndjson(&out.stdout);
+    assert_eq!(lines[0]["code"], "unknown-job");
+    assert_eq!(lines[1]["event"], "batch-done");
+    assert!(!w.path("dst/a.txt").exists(), "nothing ran");
+}
+
+/// Ctrl-C during the first job of a batch stops it as it stops a run of
+/// it alone; the jobs not yet started are not run, and say so.
+#[test]
+fn ctrl_c_stops_the_batch() {
+    if !enabled() {
+        return;
+    }
+    let w = World::new();
+    w.three_jobs();
+    let big = fs::File::create(w.path("src/big.bin")).unwrap();
+    big.set_len(64 * 1024 * 1024).unwrap();
+    drop(big);
+    let mut cmd = StdCommand::new(env!("CARGO_BIN_EXE_onefolder"));
+    for (k, v) in w.env() {
+        cmd.env(k, v);
+    }
+    let mut child = cmd
+        .env("RCLONE_BWLIMIT", "2M")
+        .env("RCLONE_DISABLE", "copy")
+        .args(["run", "--all", "--yes", "--json"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let mut reader = BufReader::new(child.stdout.take().unwrap());
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut lines = Vec::new();
+    loop {
+        let mut line = String::new();
+        assert!(
+            reader.read_line(&mut line).unwrap() > 0,
+            "the run ended early"
+        );
+        let v: Value = serde_json::from_str(&line).unwrap();
+        lines.push(v.clone());
+        if v["event"] == "stats" && v["bytes"].as_u64().unwrap_or(0) > 0 {
+            break;
+        }
+        assert!(Instant::now() < deadline, "no progress");
+    }
+    StdCommand::new("/bin/kill")
+        .args(["-INT", &child.id().to_string()])
+        .status()
+        .unwrap();
+    for line in reader.lines() {
+        lines.push(serde_json::from_str(&line.unwrap()).unwrap());
+    }
+    let status = child.wait().unwrap();
+    for l in &lines {
+        check_shape(l);
+    }
+    assert_eq!(status.code(), Some(1), "{lines:#?}");
+    assert_eq!(summary_of(&lines, LOCAL)["outcome"], "cancelled");
+    let skipped: Vec<(&str, &str)> = lines
+        .iter()
+        .filter(|l| l["event"] == "job-skipped")
+        .map(|l| (l["job"].as_str().unwrap(), l["code"].as_str().unwrap()))
+        .collect();
+    assert_eq!(skipped, [("records", "stopped"), ("photos", "stopped")]);
+    let last = lines.last().unwrap();
+    assert_eq!(last["event"], "batch-done");
+    assert_eq!(last["exit_code"], 1);
+    let jobs = last["jobs"].as_array().unwrap();
+    assert_eq!(jobs[0]["outcome"], "stopped");
+    for j in &jobs[1..] {
+        assert_eq!(j["outcome"], "skipped");
+        assert_eq!(j["reason"], "not run, the batch was stopped");
+        for d in j["destinations"].as_array().unwrap() {
+            assert_eq!(d["reason"], "not run, the batch was stopped");
+        }
+    }
+    assert!(!w.path("dst2/b.txt").exists() && !w.path("dst3/c.txt").exists());
+    assert!(!w.path("data/runs/documents.lock").exists());
+    assert_no_rclone_left(&w);
+}
+
+impl World {
+    /// Two jobs: `documents` (src to dst, one new file) and `photos` (src3
+    /// to dst3, one new file and one file moved locally whose old copy is
+    /// on the destination).
+    fn two_jobs_with_a_move(&self) {
+        for d in ["src3", "dst3"] {
+            fs::create_dir_all(self.path(d)).unwrap();
+        }
+        let text = format!(
+            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = \"{}\"\n{}\n[[jobs]]\n\
+             name = \"photos\"\nsource = \"{}\"\n{}",
+            self.path("src").display(),
+            self.local_destination(LOCAL, &self.path("dst")),
+            self.path("src3").display(),
+            self.local_destination("d-0004", &self.path("dst3")),
+        );
+        fs::write(self.path("config/config.toml"), text).unwrap();
+        self.write("src/a.txt", "a");
+        self.write("src3/m.txt", "a file that moves, long enough to hash");
+        self.seed(&self.path("src3"), &self.path("dst3"));
+        fs::create_dir_all(self.path("src3/moved")).unwrap();
+        fs::rename(self.path("src3/m.txt"), self.path("src3/moved/m.txt")).unwrap();
+        self.write("src3/c.txt", "c");
+    }
+}
+
+/// `run --all` on a terminal: `a` at the first preview is yes to the
+/// rest, so the second job runs without its confirmation, while its
+/// question about moved files still asks. A stale run lock removed for
+/// the second job is said in the text printed afterwards, with the batch
+/// lines and the closing summary.
+#[test]
+fn yes_to_the_rest_of_a_batch_on_a_terminal() {
+    if !enabled() {
+        return;
+    }
+    let w = World::new();
+    w.two_jobs_with_a_move();
+    fs::create_dir_all(w.path("data/runs")).unwrap();
+    fs::write(w.path("data/runs/photos.lock"), r#"{"pid":99999999}"#).unwrap();
+    let path = format!("{}:/usr/bin:/bin", w.rclone_dir.display());
+    let mut p = Pty::start_with(&w, &path, "run --all");
+    p.wait("Several jobs · job 1 of 2 · documents · photos next");
+    p.wait("Continue? [Y/n/a]   n skips this destination · a yes to the rest of the batch");
+    p.press(b"a");
+    p.wait("Several jobs · job 2 of 2 · documents ✓");
+    p.wait("instead of uploading them again? [Y/n]");
+    p.press(b"y");
+    // No other question: the batch ends on its own.
+    p.wait_printed("Several jobs   2 jobs · 2 destinations");
+    let all = p.finish();
+    assert!(all.contains("EXIT=0"), "{all}");
+    assert!(
+        all.contains("Removed a stale run lock left by process 99999999"),
+        "{all}"
+    );
+    assert!(w.path("dst/a.txt").exists());
+    assert!(w.path("dst3/c.txt").exists());
+    assert!(w.path("dst3/moved/m.txt").exists(), "moved, as answered");
+    assert!(!w.path("dst3/m.txt").exists());
+    assert!(!w.path("data/runs/photos.lock").exists());
+}
+
+/// `run --all --dry-run`: every job's preview, nothing changed, nothing
+/// asked; a batch in which no job ran a destination exits 2; a name given
+/// twice is a run of that job alone; `--all` with one job is still a
+/// batch.
+#[test]
+fn a_batch_dry_run_and_a_batch_where_nothing_ran() {
+    if !enabled() {
+        return;
+    }
+    let w = World::new();
+    w.three_jobs();
+    let out = w
+        .onefolder()
+        .args(["run", "--all", "--dry-run", "--json"])
+        .output()
+        .unwrap();
+    let lines = ndjson(&out.stdout);
+    for l in &lines {
+        check_shape(l);
+    }
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "the drive check fails: {lines:#?}"
+    );
+    for id in [LOCAL, "d-0002", "d-0004"] {
+        let s = summary_of(&lines, id);
+        assert_eq!(s["dry_run"], true);
+        assert_eq!(s["outcome"], "ok");
+    }
+    assert_eq!(lines.last().unwrap()["event"], "batch-done");
+    for f in ["dst/a.txt", "dst2/b.txt", "dst3/c.txt"] {
+        assert!(!w.path(f).exists(), "{f} copied by a dry run");
+    }
+    // Plain text: the previews, the closing summary marks the dry run.
+    let out = w
+        .onefolder()
+        .args(["run", "--all", "--dry-run"])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("Several jobs   3 jobs · 4 destinations · dry run"),
+        "{text}"
+    );
+
+    // Every job skipped: nothing ran, exit 2.
+    let _held = [
+        w.hold_lock("documents"),
+        w.hold_lock("records"),
+        w.hold_lock("photos"),
+    ];
+    let out = w
+        .onefolder()
+        .args(["run", "--all", "--yes", "--json"])
+        .output()
+        .unwrap();
+    let lines = ndjson(&out.stdout);
+    assert_eq!(out.status.code(), Some(2), "{lines:#?}");
+    let last = lines.last().unwrap();
+    assert_eq!(last["event"], "batch-done");
+    assert_eq!(last["exit_code"], 2);
+    drop(_held);
+
+    // A name twice is one job, with no batch.
+    let out = w
+        .onefolder()
+        .args(["run", "photos", "photos", "--yes", "--json"])
+        .output()
+        .unwrap();
+    let lines = ndjson(&out.stdout);
+    assert!(lines.iter().all(|l| l.get("batch").is_none()), "{lines:#?}");
+    assert_eq!(lines.last().unwrap()["event"], "done");
+    // `--all` with one job is a batch of one.
+    w.config(&w.local_destination(LOCAL, &w.path("dst")));
+    let out = w
+        .onefolder()
+        .args(["run", "--all", "--yes", "--json"])
+        .output()
+        .unwrap();
+    let lines = ndjson(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{lines:#?}");
+    assert_eq!(lines[0]["batch"], serde_json::json!({"index": 1, "of": 1}));
+    assert_eq!(lines.last().unwrap()["event"], "batch-done");
 }

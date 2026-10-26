@@ -118,6 +118,33 @@
 //! move (step `moving`), `progress` carries how many have moved so far.
 //! A move that fails is an `error` event for its new path, and the copy
 //! uploads that file instead.
+//!
+//! Several jobs (`run documents records`, `run --all`) make a batch. Every
+//! event of a batch except `refused` and `batch-done` carries `batch`, the job's place in it
+//! (`index` from 1) and how many jobs; each job that runs streams the
+//! events above and ends with its own `done`; a job that does not run
+//! sends `job-skipped` instead; and `batch-done` closes the stream with
+//! every job in config order, each with its destinations as `done` lists
+//! them (a job that did not run lists each of its destinations as skipped,
+//! with the reason), and the batch's exit code by the same rule over every
+//! destination (2 also when no job ran a destination at all):
+//!
+//! ```text
+//! {"event":"start","job":"documents",..,"batch":{"index":1,"of":3}}
+//! {"event":"job-skipped","job":"photos","code":"locked|lock-failed|no-destinations|stopped",
+//!  "reason":"another run in progress","batch":{"index":3,"of":3}}
+//! {"event":"batch-done","ok":false,"exit_code":1,
+//!  "jobs":[{"job":"documents","outcome":"ok|partial|failed|stopped|skipped",
+//!           "reason":"another run in progress"|null,
+//!           "destinations":[{"destination":"d-91c0","outcome":"ok","reason":null}]}]}
+//! ```
+//!
+//! `stopped` is a job Ctrl-C stopped part way; the jobs after it are
+//! skipped with `code: "stopped"` and reason `not run, the batch was
+//! stopped`. A batch refused before any job ran (an unknown job, `--dest`
+//! with several jobs) sends `refused` and a `batch-done` with no jobs,
+//! neither with `batch`. One job given alone never has a `batch` field or
+//! a `batch-done` event.
 
 use std::io::Write;
 use std::time::{Duration, Instant};
@@ -155,6 +182,19 @@ pub struct JsonReporter<W: Write> {
     destination: String,
     /// When the last `progress` event went out.
     last_progress: Option<Instant>,
+    /// In a batch: the job's place in it, 1-based, and how many jobs.
+    batch: Option<(usize, usize)>,
+}
+
+/// One job's result in the closing `batch-done` line.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct JobResult {
+    pub job: String,
+    /// `ok`, `partial`, `failed`, `stopped` or `skipped`.
+    pub outcome: String,
+    /// Why it was skipped or not run, or null.
+    pub reason: Option<String>,
+    pub destinations: Vec<DestinationResult>,
 }
 
 impl JsonReporter<std::io::Stdout> {
@@ -170,7 +210,39 @@ impl<W: Write> JsonReporter<W> {
             job: job.to_string(),
             destination: String::new(),
             last_progress: None,
+            batch: None,
         }
+    }
+
+    /// The next job of a batch: every event from now on carries
+    /// `batch: {index, of}`.
+    pub fn begin_job(&mut self, job: &str, index: usize, of: usize) {
+        self.job = job.to_string();
+        self.destination = String::new();
+        self.last_progress = None;
+        self.batch = Some((index, of));
+    }
+
+    /// A job of the batch that does not run: `job-skipped`, with why.
+    pub fn job_skipped(&mut self, code: &str, reason: &str) {
+        self.line(json!({
+            "event": "job-skipped",
+            "job": self.job,
+            "code": code,
+            "reason": reason,
+        }));
+    }
+
+    /// The batch's closing line: every job and its destinations' results,
+    /// and the batch's exit code. It carries no `batch` field.
+    pub fn batch_done(&mut self, exit_code: u8, jobs: &[JobResult]) {
+        self.batch = None;
+        self.line(json!({
+            "event": "batch-done",
+            "ok": exit_code == 0,
+            "exit_code": exit_code,
+            "jobs": jobs,
+        }));
     }
 
     #[cfg(test)]
@@ -178,8 +250,12 @@ impl<W: Write> JsonReporter<W> {
         self.out
     }
 
-    /// Writes one line. A closed pipe must not stop the sync.
-    fn line(&mut self, value: serde_json::Value) {
+    /// Writes one line, with the job's place in the batch in a batch. A
+    /// closed pipe must not stop the sync.
+    fn line(&mut self, mut value: serde_json::Value) {
+        if let (Some((index, of)), Some(map)) = (self.batch, value.as_object_mut()) {
+            map.insert("batch".to_string(), json!({"index": index, "of": of}));
+        }
         let _ = writeln!(self.out, "{value}");
         let _ = self.out.flush();
     }
@@ -821,5 +897,84 @@ mod tests {
         }, {
             insta::assert_snapshot!("run_ndjson_two_way", text);
         });
+    }
+
+    /// In a batch every event carries the job's place in it; a job that
+    /// does not run is `job-skipped`; `batch-done` closes the stream.
+    #[test]
+    fn batch_events_carry_their_place() {
+        let mut r = JsonReporter::new(Vec::new(), "documents");
+        r.begin_job("documents", 1, 2);
+        r.destination_started(&DestinationInfo {
+            job: "documents".into(),
+            id: "d-91c0".into(),
+            kind: "local",
+            display: "/Volumes/Backup/Documents".into(),
+            mode: Mode::OneWay,
+            index: 1,
+            of: 1,
+            dry_run: false,
+        });
+        r.note("Nothing to copy.");
+        let ok = DestinationResult {
+            destination: "d-91c0".into(),
+            outcome: "ok".into(),
+            reason: None,
+        };
+        r.done(0, std::slice::from_ref(&ok));
+        r.begin_job("records", 2, 2);
+        r.job_skipped("locked", "another run in progress");
+        r.batch_done(
+            1,
+            &[
+                JobResult {
+                    job: "documents".into(),
+                    outcome: "ok".into(),
+                    reason: None,
+                    destinations: vec![ok],
+                },
+                JobResult {
+                    job: "records".into(),
+                    outcome: "skipped".into(),
+                    reason: Some("another run in progress".into()),
+                    destinations: vec![DestinationResult {
+                        destination: "d-0002".into(),
+                        outcome: "skipped".into(),
+                        reason: Some("another run in progress".into()),
+                    }],
+                },
+            ],
+        );
+        let text = String::from_utf8(r.into_inner()).unwrap();
+        let lines: Vec<serde_json::Value> = text
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(lines.len(), 5, "{text}");
+        for l in &lines[..3] {
+            assert_eq!(l["batch"], json!({"index": 1, "of": 2}), "{l}");
+            assert_eq!(l["job"], "documents");
+        }
+        assert_eq!(lines[2]["event"], "done");
+        assert_eq!(
+            lines[3],
+            json!({"event": "job-skipped", "job": "records", "code": "locked",
+                   "reason": "another run in progress", "batch": {"index": 2, "of": 2}})
+        );
+        assert_eq!(
+            lines[4],
+            json!({"event": "batch-done", "ok": false, "exit_code": 1, "jobs": [
+                {"job": "documents", "outcome": "ok", "reason": null,
+                 "destinations": [{"destination": "d-91c0", "outcome": "ok", "reason": null}]},
+                {"job": "records", "outcome": "skipped", "reason": "another run in progress",
+                 "destinations": [{"destination": "d-0002", "outcome": "skipped",
+                                   "reason": "another run in progress"}]},
+            ]})
+        );
+        // A single job has no batch field.
+        let mut r = JsonReporter::new(Vec::new(), "documents");
+        r.done(0, &[]);
+        let text = String::from_utf8(r.into_inner()).unwrap();
+        assert!(!text.contains("batch"), "{text}");
     }
 }

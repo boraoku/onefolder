@@ -16,7 +16,7 @@
 //!   [`show_page`] shows it in a [`TextScreen`] to scroll, and any other
 //!   key goes back, as "Press any key" did on the normal screen.
 //! - The small inline prompts (`pick`, the label and yes/no questions)
-//!   draw below the page on the session's terminal ([`pick_on_screen`],
+//!   draw below the page on the session's terminal ([`inline_on_screen`],
 //!   [`LineInput`]), with the page as the text above them.
 //! - The summary blocks of every run are also kept in a transcript, which
 //!   is printed on the normal screen when the session ends, so the
@@ -33,7 +33,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ratatui::{DefaultTerminal, Frame};
 
-use super::accounts::{Picked, Picker};
+use super::accounts::Inline;
 use super::theme::{self, Tone};
 use super::Segment;
 
@@ -625,17 +625,18 @@ fn render_console(
 
 // --------------------------------------------------------------- pick
 
-/// [`super::accounts::pick`] inside the session: the picker drawn under
-/// the page with the same items, highlight and keys. The answer line the
-/// inline picker leaves goes on the page.
-pub fn pick_on_screen(mut picker: Picker) -> Result<Option<usize>> {
+/// [`super::accounts::show_inline`] inside the session: the list (the
+/// picker, the job chooser) drawn under the page with the same items,
+/// highlight and keys. The answer line the inline list leaves goes on the
+/// page.
+pub fn inline_on_screen<T: Inline>(mut list: T) -> Result<Option<T::Out>> {
     let mut terminal = screen()?;
     let result = loop {
         let page = lock(&PAGE).lines();
         terminal
             .draw(|f| {
-                picker.width = Some(usize::from(f.area().width));
-                render_console(f, page, picker.segments(), None);
+                list.set_width(Some(usize::from(f.area().width)));
+                render_console(f, page, list.segments(), None);
             })
             .context("could not draw the list")?;
         let Event::Key(key) = event::read().context("could not read a key")? else {
@@ -647,17 +648,13 @@ pub fn pick_on_screen(mut picker: Picker) -> Result<Option<usize>> {
         if key.kind != KeyEventKind::Press {
             continue;
         }
-        if let Some(done) = picker.handle_key(key) {
+        if let Some(done) = list.key(key) {
             break done;
         }
     };
-    Ok(match result {
-        Picked::Chosen(i) => {
-            add(&picker.answer_line(i, theme::colour_on_stdout()));
-            Some(i)
-        }
-        Picked::Cancelled => None,
-    })
+    Ok(result.inspect(|chosen| {
+        add(&list.answer_line(chosen, theme::colour_on_stdout()));
+    }))
 }
 
 // ---------------------------------------------------------- line input
@@ -807,6 +804,7 @@ impl Drop for HandOver {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::accounts::Picker;
     use crossterm::event::KeyModifiers;
     use ratatui::backend::TestBackend;
     use ratatui::Terminal;

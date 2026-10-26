@@ -1,0 +1,14 @@
+---
+source: src/ui/batch.rs
+expression: value
+---
+  Choose jobs
+
+    [x] documents      ~/Documents     2 destinations
+  ➤ [ ] engineering    ~/Engineering   2 destinations
+    [x] records        ~/Records       2 destinations · needs resync
+    [x] photos         ~/Pictures      1 destination · drive not mounted
+
+  3 jobs · 5 destinations will run, one after another
+
+  ↑↓ move · space tick · a all · n none · enter start · esc back
