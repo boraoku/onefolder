@@ -42,8 +42,8 @@ use crate::volume::{self, VolumeError};
 
 use super::moves::{self as mv, MoveGroup, MovesChoice, PlannedMove};
 use super::reporter::{
-    Answer, DecidedBy, DestinationInfo, FolderPolicy, Looking, MovesAnswer, MovesPolicy, Question,
-    Reporter, Step,
+    Answer, DecidedBy, DestinationInfo, Expected, FolderPolicy, Looking, MovesAnswer, MovesPolicy,
+    Question, Reporter, Step,
 };
 use super::summary::{Accumulator, Applied};
 
@@ -85,6 +85,9 @@ pub struct Preview {
     pub changed_bytes: u64,
     /// Files on both sides that are the same.
     pub unchanged: u64,
+    /// Files the dry run compared on both sides (its `checks`), changed or
+    /// not: what the real copy checks too.
+    pub checked: u64,
     /// Files only on the destination, which one-way leaves alone.
     pub destination_only: u64,
     /// The job's own exclude patterns.
@@ -157,6 +160,7 @@ impl Preview {
             }
         }
         let checks = stats.map_or(0, |s| s.checks);
+        preview.checked = checks;
         preview.unchanged = checks.saturating_sub(preview.changed.len() as u64);
         preview.destination_only = listed_files.saturating_sub(checks);
         preview
@@ -202,6 +206,28 @@ impl Preview {
     /// The moves will run (or would, for a dry run that did not ask).
     pub fn moving(&self) -> bool {
         !self.moves.is_empty() && self.moves_choice != MovesChoice::Upload
+    }
+
+    /// What the real copy should end at once `moved_files` (of
+    /// `moved_bytes`) have moved: rclone counts a check for every file on
+    /// both sides, changed or not, in the dry run and the copy alike, so a
+    /// moved file, now on the destination under its new name, is one more
+    /// check; it sends every new and changed file except those whose time
+    /// alone is set, and a move that failed is uploaded instead (checked
+    /// against rclone 1.75.2).
+    pub fn expected(&self, moved_files: u64, moved_bytes: u64) -> Expected {
+        let changed = self.changed.iter().filter(|f| !f.modtime_only).count();
+        let mut transfers = (self.new.len() + changed) as u64;
+        let mut bytes = self.total_bytes();
+        if self.moves_choice == MovesChoice::Move {
+            transfers += (self.moves.len() as u64).saturating_sub(moved_files);
+            bytes += self.move_bytes.saturating_sub(moved_bytes);
+        }
+        Expected {
+            checks: self.checked + moved_files,
+            transfers,
+            bytes,
+        }
     }
 }
 
@@ -689,6 +715,7 @@ pub async fn run_destination(
         }
     }
     reporter.step(Step::Copying);
+    reporter.expected(&preview.expected(moved.files, moved.bytes));
     let args = rc::copy_args(
         &source,
         &target.target,
@@ -1646,6 +1673,17 @@ mod tests {
         assert_eq!(last.step, Step::Previewing);
         assert_eq!((last.to_copy, last.to_copy_bytes), (1, 1));
         assert_eq!(last.destination_listed.map(|n| n <= 1), Some(true));
+        // The copy's totals, from the preview, are where rclone ended.
+        let end = r.last_stats.as_ref().expect("stats from the copy");
+        assert_eq!(
+            r.expected,
+            [Expected {
+                checks: end.total_checks,
+                transfers: end.total_transfers,
+                bytes: end.total_bytes,
+            }]
+        );
+        assert_eq!((end.total_transfers, end.total_bytes), (1, 1));
         let state = State::load(&paths.state_file()).unwrap();
         assert_eq!(state.runs["documents/d-0001"].outcome, Outcome::Ok);
     }
@@ -1757,6 +1795,21 @@ mod tests {
         assert_eq!(summary.added.remote, 0);
         assert_eq!(summary.bytes, 0, "nothing uploaded");
         assert_eq!(summary.moved, Some(Moved { files: 3, bytes: 8 }));
+        // The moved files are checked by the copy, not sent: the totals
+        // from the preview are where rclone ended.
+        let end = r.last_stats.as_ref().expect("stats from the copy");
+        assert_eq!(
+            r.expected,
+            [Expected {
+                checks: 4,
+                transfers: 0,
+                bytes: 0,
+            }]
+        );
+        assert_eq!(
+            (end.total_checks, end.total_transfers, end.total_bytes),
+            (4, 0, 0)
+        );
         assert_eq!(summary.destination_only, Some(0));
         for (rel, text) in [
             ("Docs/a.txt", "aaa"),
@@ -1939,6 +1992,50 @@ mod tests {
         p.choose_moves(MovesChoice::Move);
         assert_eq!((p.new.len(), p.new_bytes), (1, 5));
         assert_eq!(p.total_bytes(), 5);
+    }
+
+    #[test]
+    fn copy_totals_from_the_preview_and_the_moves() {
+        let f = |p: &str, size, modtime_only| PlannedFile {
+            path: p.into(),
+            size,
+            modtime_only,
+        };
+        let mut p = Preview {
+            new: vec![f("New/a.txt", 3, false), f("fresh.txt", 5, false)],
+            new_bytes: 8,
+            changed: vec![f("report.pdf", 7, false), f("time.txt", 0, true)],
+            changed_bytes: 7,
+            checked: 40,
+            ..Preview::default()
+        };
+        let total = |e: Expected| (e.checks, e.transfers, e.bytes);
+        // No moves: the dry run's checks, and the new and changed files
+        // except the one whose time alone is set.
+        assert_eq!(total(p.expected(0, 0)), (40, 3, 15));
+        p.apply_moves(
+            vec![MoveGroup {
+                from: "Old/a.txt".into(),
+                to: "New/a.txt".into(),
+                files: 1,
+                bytes: 3,
+                folder: false,
+            }],
+            vec![PlannedMove {
+                from: "Old/a.txt".into(),
+                to: "New/a.txt".into(),
+                size: 3,
+                group: 0,
+            }],
+        );
+        p.choose_moves(MovesChoice::Move);
+        // Moved: one more check, nothing to send for it.
+        assert_eq!(total(p.expected(1, 3)), (41, 2, 12));
+        // The move failed: the copy uploads it.
+        assert_eq!(total(p.expected(0, 0)), (40, 3, 15));
+        // Uploaded again: as with no moves.
+        p.choose_moves(MovesChoice::Upload);
+        assert_eq!(total(p.expected(0, 0)), (40, 3, 15));
     }
 
     #[test]

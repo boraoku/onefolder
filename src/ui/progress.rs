@@ -29,8 +29,8 @@ use crate::rclone::events::Stats;
 use crate::sync::oneway::Preview;
 use crate::sync::plan::{Plan, ResyncOffer};
 use crate::sync::reporter::{
-    self, Answer, Change, ConflictDone, DecidedBy, DeletedFolder, DestinationInfo, FileDone,
-    FolderAnswer, Looking, MovesAnswer, Question, Reporter, Step, Where,
+    self, Answer, Change, ConflictDone, DecidedBy, DeletedFolder, DestinationInfo, Expected,
+    FileDone, FolderAnswer, Looking, MovesAnswer, Question, Reporter, Step, Where,
 };
 use crate::sync::twoway::place;
 use crate::ui::prompt::{self, FolderPrompt, PreviewPrompt};
@@ -56,6 +56,8 @@ pub struct ProgressModel {
     /// bisync's phase within a two-way step.
     pub bisync: Option<BisyncPhase>,
     pub stats: Option<Stats>,
+    /// The totals the copy or sync should end at, from its preview or plan.
+    pub expected: Option<Expected>,
     /// Live figures of a preview or a plan.
     pub looking: Option<Looking>,
     pub recent: VecDeque<Recent>,
@@ -77,6 +79,7 @@ impl ProgressModel {
             step: Step::Checking,
             bisync: None,
             stats: None,
+            expected: None,
             looking: None,
             recent: VecDeque::new(),
             errors: 0,
@@ -91,6 +94,7 @@ impl ProgressModel {
         self.step = Step::Checking;
         self.bisync = None;
         self.stats = None;
+        self.expected = None;
         self.looking = None;
         self.recent.clear();
         self.errors = 0;
@@ -148,9 +152,17 @@ impl ProgressModel {
         }
     }
 
+    /// rclone's stats with the totals raised to the expected ones, where
+    /// the preview or the plan gave them.
+    fn shown_stats(&self) -> Option<Stats> {
+        let s = self.stats.as_ref()?;
+        Some(self.expected.map_or_else(|| s.clone(), |e| e.raise(s)))
+    }
+
     /// The lines of the screen above the key hints, for a body `width` wide.
     pub fn lines(&self, width: u16) -> Vec<Line<'static>> {
         let width = usize::from(width);
+        let stats = self.shown_stats();
         let mut lines = vec![
             Line::from(Span::styled(
                 format!("Run {}", self.job),
@@ -198,18 +210,23 @@ impl ProgressModel {
             self.step,
             Step::Copying | Step::Syncing | Step::Resyncing | Step::Restoring
         );
-        let counts = match (&self.stats, streaming) {
+        let counts = match (&stats, streaming) {
             _ if self.stopping => String::new(),
             (Some(s), true) if phase == "Transferring" => {
                 format!(
                     " {} {} of {} files",
                     theme::DOT,
-                    s.transfers,
-                    s.total_transfers
+                    prompt::thousands(s.transfers),
+                    prompt::thousands(s.total_transfers)
                 )
             }
             (Some(s), true) if self.step == Step::Copying => {
-                format!(" {} {} of {} checked", theme::DOT, s.checks, s.total_checks)
+                format!(
+                    " {} {} of {} checked",
+                    theme::DOT,
+                    prompt::thousands(s.checks),
+                    prompt::thousands(s.total_checks)
+                )
             }
             _ => String::new(),
         };
@@ -253,7 +270,7 @@ impl ProgressModel {
 
         // The bar, or a spinner until the total is known.
         let bar_width = width.saturating_sub(36).clamp(10, 34);
-        match &self.stats {
+        match &stats {
             Some(s) if s.total_bytes > 0 => {
                 let fraction = s.bytes as f64 / s.total_bytes as f64;
                 lines.push(Line::from(vec![
@@ -268,10 +285,9 @@ impl ProgressModel {
                 ]));
             }
             _ => {
-                let files = self
-                    .stats
+                let files = stats
                     .as_ref()
-                    .map(|s| format!("{} files", s.checks + s.transfers))
+                    .map(|s| format!("{} files", prompt::thousands(s.checks + s.transfers)))
                     .unwrap_or_default();
                 lines.push(Line::from(vec![
                     Span::raw("  "),
@@ -280,7 +296,7 @@ impl ProgressModel {
                 ]));
             }
         }
-        if let Some(s) = &self.stats {
+        if let Some(s) = &stats {
             let eta = s
                 .eta
                 .filter(|e| e.is_finite() && *e >= 0.0)
@@ -406,7 +422,9 @@ impl ProgressModel {
 }
 
 /// The live figures of a preview or a plan, on one line:
-/// `checked 12,408 · listed 31,220 · to copy 1,204 files, 3.2 GB`.
+/// `checked 12,408 · to copy 1,204 files, 3.2 GB`. rclone's `listed` (every
+/// entry on both sides, folders too) is left out: it read as a second,
+/// larger count of the same files. The JSON `progress` event keeps it.
 pub fn looking_figures(l: &Looking) -> String {
     let d = theme::DOT;
     if l.step == Step::Moving {
@@ -418,9 +436,6 @@ pub fn looking_figures(l: &Looking) -> String {
         );
     }
     let mut parts = vec![format!("checked {}", prompt::thousands(l.checked))];
-    if let Some(listed) = l.listed {
-        parts.push(format!("listed {}", prompt::thousands(listed)));
-    }
     parts.push(format!(
         "to copy {} {}, {}",
         prompt::thousands(l.to_copy),
@@ -479,6 +494,7 @@ enum Msg {
     Start(DestinationInfo),
     Step(Step),
     Stats(Stats),
+    Expected(Expected),
     Looking(Looking),
     File(FileDone),
     FileError(FileError),
@@ -767,6 +783,10 @@ impl Reporter for TuiReporter {
         self.send(Msg::Looking(*looking));
     }
 
+    fn expected(&mut self, expected: &Expected) {
+        self.send(Msg::Expected(*expected));
+    }
+
     fn file(&mut self, file: &FileDone) {
         self.send(Msg::File(file.clone()));
     }
@@ -858,10 +878,12 @@ fn screen(
                             model.step = s;
                             model.bisync = None;
                             model.stats = None;
+                            model.expected = None;
                             model.looking = None;
                         }
                         Msg::Phase(p) => model.bisync = Some(p),
                         Msg::Stats(s) => model.stats = Some(s),
+                        Msg::Expected(e) => model.expected = Some(e),
                         Msg::Looking(l) => model.looking = Some(l),
                         Msg::File(f) => model.file(&f),
                         Msg::FileError(e) => model.file_error(&e),
@@ -1170,7 +1192,7 @@ mod tests {
         assert_eq!(
             looking_figures(&l),
             format!(
-                "checked 1,234,567 · listed 2,000 · to copy 1 file, {}",
+                "checked 1,234,567 · to copy 1 file, {}",
                 format_bytes(2_048)
             )
         );
@@ -1192,6 +1214,75 @@ mod tests {
             looking_destination(&l).unwrap(),
             "destination listed · 48,120 files"
         );
+    }
+
+    /// The copy's totals from the preview win over rclone's while rclone
+    /// is still finding files, and counts get thousands separators.
+    #[test]
+    fn copy_totals_come_from_the_preview() {
+        let mut m = mockup();
+        m.recent.clear();
+        m.stats = Some(Stats {
+            checks: 2_726,
+            total_checks: 2_726,
+            ..Stats::default()
+        });
+        let text = render(&m, 80);
+        assert!(
+            text.contains("Comparing · 2,726 of 2,726 checked"),
+            "{text}"
+        );
+        m.expected = Some(Expected {
+            checks: 33_388,
+            transfers: 20,
+            bytes: 12_100_000,
+        });
+        let text = render(&m, 80);
+        assert!(
+            text.contains("Comparing · 2,726 of 33,388 checked"),
+            "{text}"
+        );
+        // The bar is there before the first file goes.
+        assert!(text.contains("0%   0 B / 12.1 MB"), "{text}");
+        m.stats = Some(Stats {
+            checks: 33_388,
+            total_checks: 33_388,
+            transfers: 8,
+            total_transfers: 8,
+            bytes: 6_050_000,
+            total_bytes: 11_000_000,
+            speed: 1_000_000.0,
+            eta: Some(5.0),
+            ..Stats::default()
+        });
+        let text = render(&m, 80);
+        assert!(text.contains("Transferring · 8 of 20 files"), "{text}");
+        assert!(text.contains("50%   6.0 MB / 12.1 MB"), "{text}");
+        // The ETA counts from the larger total.
+        assert!(text.contains("ETA 6s"), "{text}");
+        // More than the preview said: rclone's figures, never `21 of 20`.
+        m.stats = Some(Stats {
+            transfers: 21,
+            total_transfers: 21,
+            bytes: 12_300_000,
+            total_bytes: 12_300_000,
+            ..Stats::default()
+        });
+        let text = render(&m, 80);
+        assert!(text.contains("21 of 21 files"), "{text}");
+        assert!(text.contains("12.3 MB / 12.3 MB"), "{text}");
+        // Thousands in the file counts too.
+        m.expected = None;
+        m.stats = Some(Stats {
+            checks: 31_220,
+            transfers: 1_204,
+            total_transfers: 31_220,
+            bytes: 1,
+            ..Stats::default()
+        });
+        let text = render(&m, 80);
+        assert!(text.contains("1,204 of 31,220 files"), "{text}");
+        assert!(text.contains("32,424 files"), "{text}");
     }
 
     #[test]

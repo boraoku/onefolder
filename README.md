@@ -25,7 +25,7 @@ Each job has one local source folder and one or more destinations. Each destinat
 - **Conflicts never lose data**: The local copy wins and the other is kept as a `.conflict` copy; every conflict is listed, and run logs are kept until you prune them
 - **Volume identity checks**: Before each run OneFolder proves an external drive is the one you set up, so an unplugged drive is never mistaken for an empty folder
 - **No system clutter**: `.DS_Store`, `._*` resource forks, `Thumbs.db`, `desktop.ini` and other files macOS and Windows make for themselves are never synced; hidden files are left out too unless a job turns on "Copy hidden files"
-- **Visible progress from the start**: While the preview of a large folder runs, the screen counts the files checked, listed and to be copied, so a long listing never looks stuck
+- **Visible progress from the start**: While the preview of a large folder runs, the screen counts the files checked and to be copied, so a long listing never looks stuck; the transfer that follows shows its full totals from its first second
 - **Leaves the heavy lifting to rclone**: OneFolder never calls the Microsoft Graph API itself, stores no tokens, and never installs, updates or downloads rclone
 
 ## Quick Start
@@ -208,11 +208,13 @@ Working out the preview means listing both sides, which takes a while on a large
 
 ```text
   Previewing · 2m 14s
-  ⠋ checked 12,408 · listed 31,220 · to copy 1,204 files, 3.2 GB
+  ⠋ checked 12,408 · to copy 1,204 files, 3.2 GB
     destination 18,330 files listed so far
 ```
 
 If the comparison finishes before the destination has been listed, the last line says `still listing the destination · 48,120 files so far`. A two-way run shows the same figures while it plans. Without a terminal (a launchd job, say) the same figures are printed as one line at most every 10 seconds.
+
+Once you confirm, the transfer starts with the totals the preview found, so `Comparing · 2,726 of 33,388 checked`, `Transferring · 8 of 20 files` and the size under the bar are right from the start rather than growing as rclone walks the folder. If something changed after the preview and rclone finds more, its own larger figures are shown instead.
 
 The preview lists the first 10 files of each kind and then says how many more there are, with `and 29,142 more · l whole list`. Press `l` to see the whole list: `↑`/`↓` (or `j`/`k`), `pgup`/`pgdn` and space scroll, `g` and `G` go to the top and the bottom, and `/` filters the paths as you type (Enter keeps the filter, Esc clears it). The line under the title says where you are, such as `1–38 of 29,152`, and the heading of the list you are in stays at the top as you scroll. `Esc`, `q` or `l` takes you back to the question just as you left it; with a filter kept, the first `Esc` clears the filter and the next one goes back. While the list is open, `y`, `n` and Enter answer nothing, so reading it never starts a copy by accident:
 

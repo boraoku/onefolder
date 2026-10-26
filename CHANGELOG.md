@@ -6,6 +6,24 @@ versioning; the release workflow publishes a version when its tag (such as
 the Unreleased section to `## <version> - <date>`, which dist uses as the
 release notes.
 
+## Unreleased
+
+### Run screen
+
+- The live figures of a preview or a two-way plan no longer show
+  `listed`: rclone counts every entry on both sides there, folders too,
+  so it read as a second, larger count of the same files. The `--json`
+  `progress` event still carries `listed`.
+- The copy and sync steps show their full totals from the start, taken
+  from the preview or the plan: `Comparing · 2,726 of 33,388 checked`,
+  `Transferring · 8 of 20 files` and the size under the bar no longer grow
+  as rclone walks the folder. If rclone finds more than the preview did,
+  its own figures are shown, so a count never reads `9 of 8`. The ETA
+  follows the full size. Plain output shows the same totals; the `--json`
+  `stats` event keeps rclone's own figures.
+- File counts on the copy screen and in the plain stats line have
+  thousands separators, like the rest of OneFolder.
+
 ## 0.2.0 - 2026-10-16
 
 ### Linux and Windows (WSL)

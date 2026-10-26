@@ -11,7 +11,7 @@ use crate::sync::folders::LIST_PROMPT_OVER;
 use crate::sync::oneway::Preview;
 use crate::sync::plan::{Plan, ResyncOffer};
 use crate::sync::reporter::{
-    Answer, Change, ConflictDone, DecidedBy, DeletedFolder, DestinationInfo, FileDone,
+    Answer, Change, ConflictDone, DecidedBy, DeletedFolder, DestinationInfo, Expected, FileDone,
     FolderAnswer, Looking, MovesAnswer, Question, Reporter, Step, Where,
 };
 use crate::sync::twoway::place;
@@ -40,6 +40,8 @@ pub struct PlainReporter<W: Write> {
     last_stats: Option<Instant>,
     /// The elapsed time (ms) at which the next line of live figures is due.
     next_looking: u64,
+    /// The totals the copy or sync should end at, from its preview or plan.
+    expected: Option<Expected>,
     /// The current destination's type: `onedrive` or `local`.
     kind: &'static str,
     /// The terminal's width, for the summary's rules; `None` for a pipe.
@@ -70,6 +72,7 @@ impl<W: Write> PlainReporter<W> {
             titled: false,
             last_stats: None,
             next_looking: LOOKING_EVERY_MS,
+            expected: None,
             kind: "local",
             width: None,
             blank: true,
@@ -138,8 +141,8 @@ impl<W: Write> PlainReporter<W> {
     }
 }
 
-/// `Previewing 2m 10s · checked 12,408 · listed 31,220 · to copy 1,204
-/// files, 3.2 GB · destination 18,330 files listed so far`.
+/// `Previewing 2m 10s · checked 12,408 · to copy 1,204 files, 3.2 GB ·
+/// destination 18,330 files listed so far`.
 pub fn looking_line(l: &Looking) -> String {
     let d = theme::DOT;
     let step = match l.step {
@@ -176,9 +179,13 @@ pub fn stats_line(s: &Stats) -> String {
     if let Some(eta) = s.eta.filter(|e| e.is_finite() && *e >= 0.0) {
         parts.push(format!("ETA {}", format_duration((eta * 1000.0) as u64)));
     }
-    parts.push(format!("{} of {} files", s.transfers, s.total_transfers));
+    parts.push(format!(
+        "{} of {} files",
+        prompt::thousands(s.transfers),
+        prompt::thousands(s.total_transfers)
+    ));
     if s.errors > 0 {
-        parts.push(format!("errors {}", s.errors));
+        parts.push(format!("errors {}", prompt::thousands(s.errors)));
     }
     parts.join(&format!(" {d} "))
 }
@@ -204,10 +211,12 @@ impl<W: Write> Reporter for PlainReporter<W> {
         }
         self.write(&format!("{line}\n"));
         self.last_stats = None;
+        self.expected = None;
         self.moves_asked = false;
     }
 
     fn step(&mut self, step: Step) {
+        self.expected = None;
         let text = match step {
             Step::Previewing => "  Previewing...",
             Step::Moving => "  Moving files...",
@@ -229,7 +238,9 @@ impl<W: Write> Reporter for PlainReporter<W> {
             return;
         }
         self.last_stats = Some(Instant::now());
-        let t = self.p(&format!("  {}", stats_line(stats)), Tone::Dim);
+        let shown = self.expected.map(|e| e.raise(stats));
+        let line = stats_line(shown.as_ref().unwrap_or(stats));
+        let t = self.p(&format!("  {line}"), Tone::Dim);
         self.write(&format!("{t}\n"));
     }
 
@@ -240,6 +251,10 @@ impl<W: Write> Reporter for PlainReporter<W> {
         self.next_looking = looking.elapsed_ms + LOOKING_EVERY_MS;
         let t = self.p(&format!("  {}", looking_line(looking)), Tone::Dim);
         self.write(&format!("{t}\n"));
+    }
+
+    fn expected(&mut self, expected: &Expected) {
+        self.expected = Some(*expected);
     }
 
     fn file(&mut self, file: &FileDone) {
@@ -536,10 +551,10 @@ mod tests {
         assert_eq!(
             text,
             "  Previewing...\n\
-             \x20 Previewing 10s · checked 500 · listed 1,200 · to copy 3 files, 3 KB · destination 700 files listed so far\n\
-             \x20 Previewing 20s · checked 500 · listed 1,200 · to copy 3 files, 3 KB · destination 700 files listed so far\n\
-             \x20 Previewing 47s · checked 500 · listed 1,200 · to copy 3 files, 3 KB · destination 700 files listed so far\n\
-             \x20 Previewing 57s · checked 500 · listed 1,200 · to copy 3 files, 3 KB · still listing the destination · 700 files so far\n"
+             \x20 Previewing 10s · checked 500 · to copy 3 files, 3 KB · destination 700 files listed so far\n\
+             \x20 Previewing 20s · checked 500 · to copy 3 files, 3 KB · destination 700 files listed so far\n\
+             \x20 Previewing 47s · checked 500 · to copy 3 files, 3 KB · destination 700 files listed so far\n\
+             \x20 Previewing 57s · checked 500 · to copy 3 files, 3 KB · still listing the destination · 700 files so far\n"
         );
         // A quick preview prints none, and a new step starts the count again.
         let mut r = PlainReporter::new(Vec::new(), "documents", false);
@@ -621,6 +636,30 @@ mod tests {
         r.stopping();
         r.problem("Backup drive not mounted\n  Plug it in.");
         r.destination_skipped(&dest, "two-way sync arrives in milestone 5");
+        // The copy's totals from the preview: larger than rclone's so far,
+        // so they win; with thousands separators.
+        r.expected(&Expected {
+            checks: 0,
+            transfers: 1_204,
+            bytes: 4_000,
+        });
+        r.last_stats = None;
+        r.stats(&Stats {
+            bytes: 1000,
+            total_bytes: 1000,
+            transfers: 3,
+            total_transfers: 3,
+            speed: 1000.0,
+            ..Stats::default()
+        });
+        // A new step forgets them.
+        r.step(Step::Copying);
+        r.last_stats = None;
+        r.stats(&Stats {
+            transfers: 3,
+            total_transfers: 3,
+            ..Stats::default()
+        });
         let text = String::from_utf8(r.into_inner()).unwrap();
         assert_eq!(
             text,
@@ -634,7 +673,10 @@ mod tests {
              \x20 Stopping rclone... press Ctrl-C again to stop at once\n\
              ✗ Backup drive not mounted\n\
              \x20 Plug it in.\n\
-             ◎ /Volumes/Backup/Documents two-way sync arrives in milestone 5\n"
+             ◎ /Volumes/Backup/Documents two-way sync arrives in milestone 5\n\
+             \x20 25% · 1 KB / 4 KB · 1 KB/s · ETA 3s · 3 of 1,204 files\n\
+             \x20 Copying...\n\
+             \x20 0 B/s · 3 of 3 files\n"
         );
     }
 }

@@ -57,6 +57,40 @@ pub enum Step {
     Finishing,
 }
 
+/// What the real copy or sync should end at, from its preview or plan, so
+/// the run screen shows the right totals from the start instead of
+/// rclone's own, which grow as it walks the tree. Sent once, right after
+/// [`Step::Copying`], [`Step::Syncing`] or [`Step::Resyncing`] starts. A
+/// figure of 0 is not known. The screens show the larger of each figure
+/// and rclone's own total, so a file added since the preview never shows
+/// as `9 of 8`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Expected {
+    /// Files compared on both sides (rclone's `totalChecks`): one-way only.
+    pub checks: u64,
+    /// Files to send (rclone's `totalTransfers`), both ways for two-way.
+    pub transfers: u64,
+    /// Their bytes (rclone's `totalBytes`).
+    pub bytes: u64,
+}
+
+impl Expected {
+    /// rclone's stats with each total raised to the expected one where
+    /// that is larger. The ETA then counts from the raised byte total, at
+    /// rclone's speed.
+    pub fn raise(&self, s: &Stats) -> Stats {
+        let mut out = s.clone();
+        out.total_checks = s.total_checks.max(self.checks);
+        out.total_transfers = s.total_transfers.max(self.transfers);
+        if self.bytes > s.total_bytes {
+            out.total_bytes = self.bytes;
+            let left = self.bytes.saturating_sub(s.bytes) as f64;
+            out.eta = (s.speed > 0.0).then(|| left / s.speed);
+        }
+        out
+    }
+}
+
 /// Live figures while a preview (`copy --dry-run` and the destination
 /// listing) or a two-way plan (`bisync --dry-run`) runs, so a long listing
 /// never looks stuck. Sent about once a second.
@@ -305,6 +339,13 @@ pub trait Reporter {
     /// Live figures while a preview or a plan runs (about once a second).
     fn looking(&mut self, looking: &Looking);
 
+    /// The totals the copy or sync that just started should end at. Only
+    /// the run screen and the plain output use them; the JSON stream keeps
+    /// rclone's own figures.
+    fn expected(&mut self, expected: &Expected) {
+        let _ = expected;
+    }
+
     /// A file finished copying, or was deleted.
     fn file(&mut self, file: &FileDone);
 
@@ -404,6 +445,10 @@ pub struct Scripted {
     pub summaries: Vec<Summary>,
     /// Every live figure sent while a preview or a plan ran.
     pub looking: Vec<Looking>,
+    /// Every set of expected totals sent.
+    pub expected: Vec<Expected>,
+    /// The last stats line from rclone.
+    pub last_stats: Option<Stats>,
     /// Presses Ctrl-C (once) when the moves have moved this many files,
     /// to stop a run part way through its moves.
     pub press_at_moved: Option<u64>,
@@ -429,7 +474,8 @@ impl Reporter for Scripted {
     fn step(&mut self, step: Step) {
         self.log.push(format!("step {step:?}"));
     }
-    fn stats(&mut self, _stats: &Stats) {
+    fn stats(&mut self, stats: &Stats) {
+        self.last_stats = Some(stats.clone());
         if self.log.last().map(String::as_str) != Some("stats") {
             self.log.push("stats".into());
         }
@@ -445,6 +491,9 @@ impl Reporter for Scripted {
                 crate::rclone::exec::press_interrupt();
             }
         }
+    }
+    fn expected(&mut self, expected: &Expected) {
+        self.expected.push(*expected);
     }
     fn file(&mut self, file: &FileDone) {
         self.log.push(format!(
@@ -582,6 +631,49 @@ mod tests {
             Silent.ask_folders("onedrive", &[folder.clone(), folder]),
             [FolderAnswer::Keep, FolderAnswer::Keep]
         );
+    }
+
+    #[test]
+    fn expected_totals_raise_rclones_and_never_lower_them() {
+        let e = Expected {
+            checks: 2_726,
+            transfers: 20,
+            bytes: 12_000,
+        };
+        // Early on rclone has found less than the preview did.
+        let early = Stats {
+            checks: 100,
+            total_checks: 100,
+            transfers: 1,
+            total_transfers: 3,
+            bytes: 2_000,
+            total_bytes: 4_000,
+            speed: 1_000.0,
+            eta: Some(2.0),
+            ..Stats::default()
+        };
+        let r = e.raise(&early);
+        assert_eq!(
+            (r.total_checks, r.total_transfers, r.total_bytes),
+            (2_726, 20, 12_000)
+        );
+        assert_eq!((r.checks, r.transfers, r.bytes), (100, 1, 2_000));
+        assert_eq!(r.eta, Some(10.0));
+        // More than expected (a file added since the preview): rclone's.
+        let more = Stats {
+            total_checks: 3_000,
+            total_transfers: 21,
+            total_bytes: 13_000,
+            eta: Some(4.0),
+            ..early.clone()
+        };
+        let r = e.raise(&more);
+        assert_eq!(
+            (r.total_checks, r.total_transfers, r.total_bytes, r.eta),
+            (3_000, 21, 13_000, Some(4.0))
+        );
+        // Not known: rclone's as they are.
+        assert_eq!(Expected::default().raise(&early), early);
     }
 
     #[test]

@@ -755,6 +755,7 @@ pub async fn run_destination(
     }
 
     reporter.step(Step::Syncing);
+    reporter.expected(&plan.expected());
     let excludes = bisync::excludes(&excludes_of(run.job), &held);
     let target = flow.target.clone();
     let roots = [source.as_str(), target.as_str()];
@@ -1287,6 +1288,7 @@ async fn resync(
     }
 
     reporter.step(Step::Resyncing);
+    reporter.expected(&offer.expected());
     let overwrites: HashSet<String> = offer.kept.iter().map(|k| k.path.clone()).collect();
     let target = flow.target.clone();
     let roots = [run.job.source.as_str(), target.as_str()];

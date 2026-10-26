@@ -19,7 +19,19 @@ use crate::rclone::bisync::{
 use crate::rclone::events::{Event, Skipped};
 
 use super::oneway::PlannedFile;
-use super::reporter::{DecidedBy, DeletedFolder, FolderAnswer, Where};
+use super::reporter::{DecidedBy, DeletedFolder, Expected, FolderAnswer, Where};
+
+/// What a two-way run sends, both ways together: bisync's transfers and
+/// bytes over its whole run equal the plan's (checked against rclone
+/// 1.75.2). Its checks are not seeded: bisync counts its own listing
+/// comparisons among them, and the screen does not show them.
+fn expected_of(to_remote: &Direction, to_local: &Direction) -> Expected {
+    Expected {
+        checks: 0,
+        transfers: to_remote.sent() + to_local.sent(),
+        bytes: to_remote.bytes + to_local.bytes,
+    }
+}
 
 /// Files going one way.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -32,6 +44,13 @@ pub struct Direction {
 impl Direction {
     pub fn files(&self) -> usize {
         self.new.len() + self.changed.len()
+    }
+
+    /// Files whose content goes across: not those whose time alone is set,
+    /// which rclone does not count as transfers.
+    pub fn sent(&self) -> u64 {
+        let changed = self.changed.iter().filter(|f| !f.modtime_only).count();
+        (self.new.len() + changed) as u64
     }
 
     fn add(&mut self, file: PlannedFile, new: bool) {
@@ -146,6 +165,11 @@ pub struct Plan {
 }
 
 impl Plan {
+    /// What the real bisync should end at (see [`Expected`]).
+    pub fn expected(&self) -> Expected {
+        expected_of(&self.to_remote, &self.to_local)
+    }
+
     /// Nothing to do: no real run is needed.
     pub fn is_empty(&self) -> bool {
         self.changes == 0 && self.folders.is_empty()
@@ -446,6 +470,11 @@ pub struct ResyncOffer {
 }
 
 impl ResyncOffer {
+    /// What the real merge should end at (see [`Expected`]).
+    pub fn expected(&self) -> Expected {
+        expected_of(&self.to_remote, &self.to_local)
+    }
+
     /// Fills the counts from a `--resync --dry-run`. `listed` is every
     /// file the destination holds now, unfiltered (conflict copies too), to
     /// tell overwrites from new files and to keep conflict names free;
@@ -622,6 +651,29 @@ mod tests {
         assert_eq!(plan.changes, 14);
         assert!(!plan.is_empty());
         assert_eq!(by_folder(&plan.delete_remote)["sub"], 3);
+        // What the real run should end at: bisync's transfers and bytes,
+        // the same in a dry run and the real run.
+        let end = last_stats(&events::decode_all(&fixture("bisync-plan.jsonl")));
+        assert_eq!(
+            plan.expected(),
+            Expected {
+                checks: 0,
+                transfers: end.total_transfers,
+                bytes: end.total_bytes,
+            }
+        );
+        assert_eq!((end.total_transfers, end.total_bytes), (5, 59));
+    }
+
+    fn last_stats(events: &[Event]) -> crate::rclone::events::Stats {
+        events
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                Event::Stats(s) => Some(s.clone()),
+                _ => None,
+            })
+            .expect("a stats line")
     }
 
     fn folder(path: &str, answer: FolderAnswer) -> FolderDecision {
@@ -872,6 +924,11 @@ mod tests {
             }]
         );
         assert!(offer.to_remote.new.len() > 10);
+        let end = last_stats(&events);
+        assert_eq!(
+            (offer.expected().transfers, offer.expected().bytes),
+            (end.total_transfers, end.total_bytes)
+        );
     }
 
     #[test]
