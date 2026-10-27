@@ -1,0 +1,21 @@
+---
+source: src/ui/jobs.rs
+assertion_line: 1291
+expression: value
+---
+"                                                                                "
+"  Jobs  1 job · 2 destinations                                                  "
+"                                                                                "
+"  ➤ documents      ~/Documents                                                  "
+"        → work:Backups/Documents          two-way   ✓ 2h ago                    "
+"        → /Volumes/Backup/Documents       one-way   ◎ not mounted               "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  enter run · a add · e edit · d remove · / filter · ? keys · q back            "
+"                                                                                "

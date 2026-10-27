@@ -1,20 +1,21 @@
 ---
 source: src/ui/menu.rs
+assertion_line: 420
 expression: value
 ---
 "                                                                                "
-"  OneFolder                                                                     "
-"             ╭ Keys ─────────────────────────────────────────────╮              "
-"  ⚙ rclone 1.│↑↓  j/k   move                                     │              "
-"             │g  G      first, last                              │              "
-"  ➤ Run a job│enter     open the item; you come back here after  │              "
-"    Jobs     │/         filter the jobs or accounts list         │              "
+"  OneFolder  ╭ Keys ─────────────────────────────────────────────╮              "
+"             │↑↓  j/k   move                                     │              "
+"  ⚙ rclone 1.│g  G      first, last                              │              "
+"             │enter     open the item; you come back here after  │              "
+"  ➤ Jobs     │/         filter the jobs or accounts list         │unted         "
 "    Accounts │a  e  d   add, edit, remove in a list              │              "
-"    Status   │t  r      test, reconnect an account               │              "
-"    Doctor   │y  n      answer a question                        │4 MB · 3 to…  "
-"    Quit     │?         show or hide these keys                  │              "
-"             │q  esc    quit (in a list: go back)                │              "
-"  ↑↓ j/k move│ctrl-c    quit OneFolder from any screen           │              "
+"    Status   │j  k      in the Jobs list: move the job down, up  │              "
+"    Doctor   │t  r      test, reconnect an account               │ MB…          "
+"    Quit     │y  n      answer a question                        │              "
+"             │?         show or hide these keys                  │              "
+"  ↑↓ j/k move│q  esc    quit (in a list: go back)                │              "
+"             │ctrl-c    quit OneFolder from any screen           │              "
 "             │                                                   │              "
 "             │any key closes this                                │              "
 "             ╰───────────────────────────────────────────────────╯              "

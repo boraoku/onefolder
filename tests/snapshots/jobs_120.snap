@@ -1,9 +1,12 @@
 ---
 source: src/ui/jobs.rs
+assertion_line: 1343
 expression: value
 ---
 "                                                                                                                        "
 "  Jobs  3 jobs · 4 destinations                                                                                         "
+"                                                                                                                        "
+"    Several jobs, one after another…                                                                                    "
 "                                                                                                                        "
 "    documents      ~/Documents                                                                                          "
 "        → work:Backups/Documents          two-way   ✓ 2h ago                                                            "
@@ -11,10 +14,8 @@ expression: value
 "  ➤ photos         ~/Pictures/Photos                                                                                    "
 "        → personal:Photos                 one-way   ✓ yesterday                                                         "
 "    notes          ~/Notes                                                                                              "
-"        → work:Notes                      two-way   ✗ failed 3d ago · 2 held                                            "
-"                                                                                                                        "
 "                                                                                                                        "
 "  Remove job photos? Files and run logs are left where they are. y remove · any other key keeps it                      "
 "                                                                                                                        "
-"  enter run · a add · e edit · d remove · / filter · ? keys · q back                                                    "
+"  enter run · a add · e edit · d remove · j/k move · / filter · ? keys · q back                                         "
 "                                                                                                                        "

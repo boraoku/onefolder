@@ -4114,14 +4114,17 @@ fn the_menu_session_stays_on_the_alternate_screen() {
         stdin.write_all(keys).unwrap();
         stdin.flush().unwrap();
     };
-    wait("Run a job", 1);
+    wait("Doctor", 1);
     press(b"\r");
-    wait("Run which job?", 1);
+    wait("enter run", 1);
     press(b"\r");
     wait("Continue?", 1);
     press(b"y");
     wait("esc back", 1);
     press(b"\x1b");
+    // Back on the jobs list, then the menu.
+    wait("Ran documents", 1);
+    press(b"q");
     std::thread::sleep(Duration::from_millis(1000));
     press(b"q");
     let status = loop {
@@ -4147,10 +4150,10 @@ fn the_menu_session_stays_on_the_alternate_screen() {
     // The shell's line is printed once, before the session, and never again.
     assert!(before.contains(SEED), "{before}");
     assert_eq!(all.matches(SEED).count(), 1, "{all}");
-    // The picker, the summary and its output screen are inside the session.
-    assert!(session.contains("Run which job?"), "{session}");
+    // The jobs list, the summary and its output screen are inside the session.
+    assert!(session.contains("enter run"), "{session}");
     assert!(session.contains("Log:"), "{session}");
-    assert!(!before.contains("Run which job?") && !after.contains("Run which job?"));
+    assert!(!before.contains("enter run") && !after.contains("enter run"));
     assert!(!after.contains("Press any key"), "{after}");
     // The transcript: the summary block, on the normal screen.
     assert!(
@@ -4210,7 +4213,7 @@ fn sigterm_at_the_menu_restores_the_terminal() {
     };
     let text = || String::from_utf8_lossy(&seen.lock().unwrap()).into_owned();
     let deadline = Instant::now() + Duration::from_secs(60);
-    while !text().contains("Run a job") {
+    while !text().contains("Doctor") {
         assert!(Instant::now() < deadline, "no menu: {}", text());
         std::thread::sleep(Duration::from_millis(100));
     }
@@ -4283,8 +4286,8 @@ fn the_source_is_completed_and_browsed_in_the_job_form() {
     w.write("pick/beta/seven.bin", &"y".repeat(7_000));
     let path = format!("{}:/usr/bin:/bin", w.rclone_dir.display());
     let mut p = Pty::start(&w, &path);
-    p.wait("Run a job");
-    p.press(b"j\r");
+    p.wait("Doctor");
+    p.press(b"\r");
     p.wait("a add");
     p.press(b"a");
     p.wait("Add job");
@@ -4332,7 +4335,7 @@ fn the_source_is_completed_and_browsed_in_the_job_form() {
     }
     // Out of the jobs list and the menu.
     p.press(b"\x1b");
-    p.wait("Run a job");
+    p.wait("Doctor");
     p.press(b"q");
     let all = p.finish();
     assert!(all.contains("EXIT=0"), "{all}");
@@ -4550,8 +4553,8 @@ fn browse_onedrive(w: &World, marker: &str) -> Pty {
     w.write("remote/Measured13/twelve.bin", &"x".repeat(12_000));
     w.write("remote/Slow13/one.bin", "y");
     let mut p = Pty::start(w, &slow_size_path(w, marker));
-    p.wait("Run a job");
-    p.press(b"j\r");
+    p.wait("Doctor");
+    p.press(b"\r");
     p.wait("a add");
     p.press(b"a");
     p.wait("Add job");
@@ -5065,4 +5068,119 @@ fn a_batch_dry_run_and_a_batch_where_nothing_ran() {
     assert_eq!(out.status.code(), Some(0), "{lines:#?}");
     assert_eq!(lines[0]["batch"], serde_json::json!({"index": 1, "of": 1}));
     assert_eq!(lines.last().unwrap()["event"], "batch-done");
+}
+
+impl World {
+    /// Two plain jobs: documents (src to dst) and photos (src3 to dst3),
+    /// each with a file to copy.
+    fn two_jobs(&self) {
+        let text = format!(
+            "# Two jobs.\nversion = 1\n\n# The first.\n[[jobs]]\nname = \"documents\"\n\
+             source = \"{}\"\n{}\n# The second.\n[[jobs]]\nname = \"photos\"\nsource = \"{}\"\n{}",
+            self.path("src").display(),
+            self.local_destination(LOCAL, &self.path("dst")),
+            self.path("src3").display(),
+            self.local_destination("d-0004", &self.path("dst3")),
+        );
+        fs::write(self.path("config/config.toml"), text).unwrap();
+        self.write("src/a.txt", "a");
+        self.write("src3/c.txt", "c");
+    }
+}
+
+/// The menu's Jobs list: its first row, `Several jobs, one after
+/// another…`, opens all or some; All runs the batch, and once its
+/// summary has been read the list comes back with fresh statuses and the
+/// cursor still on that row.
+#[test]
+fn several_jobs_from_the_jobs_list() {
+    if !enabled() {
+        return;
+    }
+    let w = World::new();
+    w.two_jobs();
+    let path = format!("{}:/usr/bin:/bin", w.rclone_dir.display());
+    let mut p = Pty::start(&w, &path);
+    p.wait("Doctor");
+    p.press(b"\r");
+    p.wait("    Several jobs, one after another…");
+    p.wait("➤ documents");
+    // Up, not k: on the jobs list k moves the job.
+    p.press(b"\x1b[A");
+    p.wait("➤ Several jobs, one after another…");
+    p.press(b"\r");
+    p.wait("2 jobs, run one after another in the order of the Jobs list.");
+    p.press(b"\r");
+    p.wait("Several jobs · job 1 of 2 · documents · photos next");
+    p.wait("Continue? [Y/n/a]");
+    p.press(b"a");
+    p.wait("esc back");
+    p.press(b"\x1b");
+    // Back on the list: what ran, fresh statuses, the cursor kept.
+    p.wait("Ran 2 jobs");
+    p.wait("➤ Several jobs, one after another…");
+    let screen = p.screen().join("\n");
+    assert_eq!(screen.matches("never run").count(), 0, "{screen}");
+    assert_eq!(screen.matches("✓ just now").count(), 2, "{screen}");
+    p.press(b"q");
+    p.wait("Doctor");
+    p.press(b"q");
+    let all = p.finish();
+    assert!(all.contains("EXIT=0"), "{all}");
+    assert!(w.path("dst/a.txt").exists() && w.path("dst3/c.txt").exists());
+}
+
+/// `j` on the Jobs list (`onefolder jobs`) moves the job down and saves
+/// the config at once, comments and all; `run --all` then runs the jobs
+/// in the new order.
+#[test]
+fn a_job_moved_on_the_jobs_list_changes_the_batch_order() {
+    if !enabled() {
+        return;
+    }
+    let w = World::new();
+    w.two_jobs();
+    let path = format!("{}:/usr/bin:/bin", w.rclone_dir.display());
+    let mut p = Pty::start_with(&w, &path, "jobs");
+    p.wait("➤ documents");
+    p.press(b"j");
+    // The cursor follows the job to the second row.
+    p.wait("    photos");
+    let config = w.path("config/config.toml");
+    loop {
+        let saved = fs::read_to_string(&config).unwrap();
+        if saved.find("\"photos\"") < saved.find("\"documents\"") {
+            assert!(saved.starts_with("# Two jobs.\n"), "{saved}");
+            assert!(
+                saved.find("# The second.") < saved.find("\"photos\"")
+                    && saved.find("\"photos\"") < saved.find("# The first."),
+                "{saved}"
+            );
+            break;
+        }
+        assert!(
+            Instant::now() < p.deadline,
+            "not saved: {}",
+            p.screen().join("\n")
+        );
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    // The screen did not leave the alternate screen to save.
+    p.press(b"q");
+    let all = p.finish();
+    assert!(all.contains("EXIT=0"), "{all}");
+    assert_eq!(all.matches("\x1b[?1049h").count(), 1, "entered once: {all}");
+    let out = w
+        .onefolder()
+        .args(["run", "--all", "--yes", "--json"])
+        .output()
+        .unwrap();
+    let lines = ndjson(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{lines:#?}");
+    let mut order: Vec<&str> = lines[..lines.len() - 1]
+        .iter()
+        .map(|l| l["job"].as_str().unwrap())
+        .collect();
+    order.dedup();
+    assert_eq!(order, ["photos", "documents"]);
 }

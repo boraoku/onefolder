@@ -229,27 +229,6 @@ async fn menu_item(choice: ui::menu::Choice, paths: &Paths, rclone: &Rclone) -> 
     use ui::menu::Choice;
     Ok(match choice {
         Choice::Quit => false,
-        Choice::RunJob => match ConfigFile::load(&paths.config_file()) {
-            Ok(file) if !file.config.jobs.is_empty() => {
-                match run::pick_job(paths, &file.config).await? {
-                    Some(run::Chosen::Job(name)) => {
-                        run::run_job(paths, rclone, Some(&name), &run::Options::default()).await?;
-                        true
-                    }
-                    Some(run::Chosen::Several(names)) => {
-                        run::run_batch(paths, rclone, Some(names), &run::Options::default())
-                            .await?;
-                        true
-                    }
-                    None => false,
-                }
-            }
-            // Says why there is nothing to run.
-            _ => {
-                run::run_job(paths, rclone, None, &run::Options::default()).await?;
-                true
-            }
-        },
         Choice::Jobs => {
             jobs::interactive(paths, rclone).await?;
             false
@@ -297,14 +276,8 @@ async fn menu_status(paths: &Paths, rclone: &Rclone) -> ui::menu::MenuStatus {
             );
             return ui::menu::MenuStatus {
                 header: format!("rclone {} · the config does not load", rclone.version),
-                items: vec![
-                    fix.clone(),
-                    fix.clone(),
-                    fix,
-                    none.clone(),
-                    none.clone(),
-                    none,
-                ],
+                items: vec![fix.clone(), fix, none.clone(), none.clone(), none],
+                shorter: Vec::new(),
             };
         }
     };
@@ -338,23 +311,19 @@ async fn menu_status(paths: &Paths, rclone: &Rclone) -> ui::menu::MenuStatus {
         header.push_str(&format!(" · last run {}", ui::jobs::ago(*t, now)));
     }
 
-    let run_item = match (&last, config.jobs.is_empty()) {
-        (_, true) => ("no jobs yet · add one in Jobs".to_string(), Tone::Plain),
-        (None, false) => ("nothing has run yet".to_string(), Tone::Plain),
-        (Some((t, job, outcome)), false) => {
-            let (glyph, tone) = match outcome {
-                Outcome::Ok => (ui::theme::DONE, Tone::Plain),
-                Outcome::Partial | Outcome::Cancelled => (ui::theme::SKIPPED, Tone::Warning),
-                Outcome::Failed | Outcome::NeedsResync => (ui::theme::FAILED, Tone::Error),
-            };
-            (
-                format!("last: {job} {glyph} {}", ui::jobs::ago(*t, now)),
-                tone,
-            )
-        }
-    };
-
-    let dests: usize = config.jobs.iter().map(|j| j.destinations.len()).sum();
+    // Jobs: the count, the last run, then any drive not there; on a narrow
+    // screen the last run goes first, then the drives.
+    let last_run = last.as_ref().map(|(t, job, outcome)| {
+        let (glyph, tone) = match outcome {
+            Outcome::Ok => (ui::theme::DONE, Tone::Plain),
+            Outcome::Partial | Outcome::Cancelled => (ui::theme::SKIPPED, Tone::Warning),
+            Outcome::Failed | Outcome::NeedsResync => (ui::theme::FAILED, Tone::Error),
+        };
+        (
+            format!("last: {job} {glyph} {}", ui::jobs::ago(*t, now)),
+            tone,
+        )
+    });
     let states: Vec<Option<bool>> = config
         .jobs
         .iter()
@@ -364,14 +333,6 @@ async fn menu_status(paths: &Paths, rclone: &Rclone) -> ui::menu::MenuStatus {
         .collect();
     let unplugged = states.iter().filter(|s| **s == Some(false)).count();
     let hanging = states.iter().filter(|s| s.is_none()).count();
-    let mut jobs_item = (
-        format!(
-            "{} · {}",
-            plural(config.jobs.len(), "job"),
-            plural(dests, "destination")
-        ),
-        Tone::Plain,
-    );
     let drives = |n: usize| {
         if n == 1 {
             "1 drive".to_string()
@@ -379,18 +340,15 @@ async fn menu_status(paths: &Paths, rclone: &Rclone) -> ui::menu::MenuStatus {
             format!("{n} drives")
         }
     };
+    let mut drive_note = Vec::new();
     if unplugged > 0 {
-        jobs_item
-            .0
-            .push_str(&format!(" · {} not mounted", drives(unplugged)));
-        jobs_item.1 = Tone::Warning;
+        drive_note.push(format!("{} not mounted", drives(unplugged)));
     }
     if hanging > 0 {
-        jobs_item
-            .0
-            .push_str(&format!(" · {} not answering", drives(hanging)));
-        jobs_item.1 = Tone::Warning;
+        drive_note.push(format!("{} not answering", drives(hanging)));
     }
+    let drive_note = (!drive_note.is_empty()).then(|| drive_note.join(" · "));
+    let (jobs_item, jobs_shorter) = jobs_status(config.jobs.len(), last_run, drive_note);
 
     let accounts_item = if config.accounts.is_empty() {
         ("none yet · add one here".to_string(), Tone::Plain)
@@ -484,15 +442,60 @@ async fn menu_status(paths: &Paths, rclone: &Rclone) -> ui::menu::MenuStatus {
 
     ui::menu::MenuStatus {
         header,
-        items: vec![
-            run_item,
-            jobs_item,
-            accounts_item,
-            status_item,
-            doctor_item,
-            none,
-        ],
+        items: vec![jobs_item, accounts_item, status_item, doctor_item, none],
+        shorter: vec![jobs_shorter],
     }
+}
+
+/// The menu's Jobs status and its shorter forms, from the number of jobs,
+/// the last run and the drive warning: `3 jobs · last: documents ✓ 2h ago · 1 drive not mounted`,
+/// then without the last run, then the count alone. `no jobs yet` with
+/// none.
+fn jobs_status(
+    jobs: usize,
+    last_run: Option<(String, ui::theme::Tone)>,
+    drive_note: Option<String>,
+) -> ((String, ui::theme::Tone), Vec<(String, ui::theme::Tone)>) {
+    use ui::theme::Tone;
+    if jobs == 0 {
+        return (("no jobs yet".to_string(), Tone::Plain), Vec::new());
+    }
+    let count = plural(jobs, "job");
+    let count = count.as_str();
+    let drive_tone = if drive_note.is_some() {
+        Tone::Warning
+    } else {
+        Tone::Plain
+    };
+    let join = |parts: &[Option<&str>]| {
+        parts
+            .iter()
+            .flatten()
+            .copied()
+            .collect::<Vec<_>>()
+            .join(" · ")
+    };
+    let run_tone = last_run.as_ref().map_or(Tone::Plain, |(_, t)| *t);
+    let full = (
+        join(&[
+            Some(count),
+            last_run.as_ref().map(|(t, _)| t.as_str()),
+            drive_note.as_deref(),
+        ]),
+        match (run_tone, drive_tone) {
+            (Tone::Error, _) => Tone::Error,
+            (Tone::Warning, _) | (_, Tone::Warning) => Tone::Warning,
+            _ => Tone::Plain,
+        },
+    );
+    let mut shorter = Vec::new();
+    if last_run.is_some() && drive_note.is_some() {
+        shorter.push((join(&[Some(count), drive_note.as_deref()]), drive_tone));
+    }
+    if last_run.is_some() || drive_note.is_some() {
+        shorter.push((count.to_string(), Tone::Plain));
+    }
+    (full, shorter)
 }
 
 fn plural(n: usize, word: &str) -> String {
@@ -534,6 +537,45 @@ mod tests {
         assert_eq!(args.jobs, ["documents"]);
         assert!(args.yes);
         assert_eq!(args.folder_deletes, Some(run::FolderDeletes::Keep));
+    }
+
+    #[test]
+    fn the_jobs_item_of_the_menu() {
+        use ui::theme::Tone;
+        assert_eq!(
+            jobs_status(0, None, None),
+            (("no jobs yet".to_string(), Tone::Plain), vec![])
+        );
+        assert_eq!(
+            jobs_status(1, None, None),
+            (("1 job".to_string(), Tone::Plain), vec![])
+        );
+        let last = Some(("last: documents ✗ 2h ago".to_string(), Tone::Error));
+        let drives = Some("1 drive not mounted".to_string());
+        assert_eq!(
+            jobs_status(3, last.clone(), drives.clone()),
+            (
+                (
+                    "3 jobs · last: documents ✗ 2h ago · 1 drive not mounted".to_string(),
+                    Tone::Error
+                ),
+                vec![
+                    ("3 jobs · 1 drive not mounted".to_string(), Tone::Warning),
+                    ("3 jobs".to_string(), Tone::Plain)
+                ]
+            )
+        );
+        assert_eq!(
+            jobs_status(3, last, None),
+            (
+                ("3 jobs · last: documents ✗ 2h ago".to_string(), Tone::Error),
+                vec![("3 jobs".to_string(), Tone::Plain)]
+            )
+        );
+        assert_eq!(
+            jobs_status(3, None, drives).0,
+            ("3 jobs · 1 drive not mounted".to_string(), Tone::Warning)
+        );
     }
 
     #[test]

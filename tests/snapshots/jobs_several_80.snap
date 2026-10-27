@@ -1,0 +1,21 @@
+---
+source: src/ui/jobs.rs
+assertion_line: 1343
+expression: value
+---
+"                                                                                "
+"  Jobs  3 jobs · 4 destinations                                                 "
+"                                                                                "
+"  ➤ Several jobs, one after another…                                            "
+"                                                                                "
+"    documents      ~/Documents                                                  "
+"        → work:Backups/Documents          two-way   ✓ 2h ago                    "
+"        → /Volumes/Backup/Documents       one-way   ◎ not mounted               "
+"    photos         ~/Pictures/Photos                                            "
+"        → personal:Photos                 one-way   ✓ yesterday                 "
+"    notes          ~/Notes                                                      "
+"                                                                                "
+"  Pick a job to move.                                                           "
+"                                                                                "
+"  enter run · a add · e edit · d remove · j/k move · ? keys · q back            "
+"                                                                                "

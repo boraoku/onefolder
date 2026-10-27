@@ -1,0 +1,21 @@
+---
+source: src/ui/jobs.rs
+assertion_line: 1351
+expression: value
+---
+"                                                  "
+"  Jobs  3 jobs · 4 destinations                   "
+"                                                  "
+"    Several jobs, one after another…              "
+"                                                  "
+"  ➤ documents      ~/Documents                    "
+"        → work:…/Documents  two-way   ✓ 2h ago    "
+"        → …ackup/Documents  one-way   ◎ not moun  "
+"    photos         ~/Pictures/Photos              "
+"        → personal:Photos   one-way   ✓ yesterda  "
+"    notes          ~/Notes                        "
+"        → work:Notes        two-way   ✗ failed 3  "
+"                                                  "
+"                                                  "
+"  enter run · a add · e edit · ? keys · q back    "
+"                                                  "

@@ -17,11 +17,13 @@ use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
+use crate::cli::run::{DestResult, RunEnd};
 use crate::config::{self, ConfigFile, Paths};
 use crate::jsonout::Envelope;
 use crate::model::{Account, Destination, Job, Mode, RunRecord};
 use crate::rclone::detect::Rclone;
 use crate::state::{self, lock, State};
+use crate::ui::batch::JobEnd;
 use crate::ui::jobform::{self, Note, Outcome};
 use crate::ui::jobs::{self as screen, DestinationView, JobView, LastRun};
 use crate::ui::theme::{self, Tone};
@@ -492,7 +494,9 @@ fn list(paths: &Paths, json: bool) -> Result<ExitCode> {
 
 // ---------------------------------------------------------- interactive
 
-/// The interactive jobs list: loops until the user goes back.
+/// The interactive jobs list: loops until the user goes back. After a
+/// run started here (one job or several) the list comes back with fresh
+/// statuses and the cursor where it was.
 pub async fn interactive(paths: &Paths, rclone: &Rclone) -> Result<ExitCode> {
     let file = match load(paths) {
         Ok(file) => file,
@@ -503,8 +507,11 @@ pub async fn interactive(paths: &Paths, rclone: &Rclone) -> Result<ExitCode> {
         // Inside the session: anything the last action printed, first.
         super::show_output().await?;
         // The screen blocks on the terminal, so it runs on a blocking thread.
+        let at = paths.clone();
         let (back, action) = tokio::task::spawn_blocking(move || {
-            let action = screen::run(&mut screen);
+            let action = screen::run(&mut screen, |screen, name, down| {
+                save_move(&at, screen, name, down)
+            });
             (screen, action)
         })
         .await
@@ -514,39 +521,53 @@ pub async fn interactive(paths: &Paths, rclone: &Rclone) -> Result<ExitCode> {
         let mut select = None;
         let result = match &action {
             screen::Action::Back => return Ok(ExitCode::SUCCESS),
+            screen::Action::Move { .. } => {
+                unreachable!("screen::run saves a move through its callback")
+            }
             screen::Action::Run(name) => {
-                let code =
-                    super::run::run_job(paths, rclone, Some(name), &super::run::Options::default())
-                        .await?;
-                // The summaries are on the normal screen (or, inside the
-                // session, on the output screen); let them be read before
-                // the list takes the screen back.
-                tokio::task::spawn_blocking(|| {
-                    crate::ui::pause(&theme::paint(
-                        "Press any key to go back to the jobs list.",
-                        Tone::Dim,
-                        theme::colour_on_stdout(),
-                    ))
-                })
-                .await
-                .context("the jobs screen stopped unexpectedly")??;
-                screen.message = Some(if code == ExitCode::SUCCESS {
-                    (format!("{} Ran {name}", theme::DONE), Tone::Success)
-                } else {
-                    (
-                        format!(
-                            "{} Ran {name}, not everything went across: see onefolder jobs list",
-                            theme::SKIPPED
-                        ),
-                        Tone::Warning,
-                    )
-                });
+                let opts = super::run::Options::default();
+                let mut ended = RunEnd::NotRun;
+                super::run::run_job_ended(paths, rclone, Some(name), &opts, &mut ended).await?;
+                if let Err(f) = after_run(paths, &mut screen, name, &ended, Some(name)).await? {
+                    return report("jobs", false, f);
+                }
+                continue;
+            }
+            screen::Action::Several => {
                 let file = match load(paths) {
                     Ok(file) => file,
                     Err(f) => return report("jobs", false, f),
                 };
-                screen.now = now();
-                screen.set_jobs(job_views(&file.config.jobs, &load_state(paths)), Some(name));
+                // The file may have changed since the list was drawn: a
+                // batch from this row needs two jobs or more.
+                if file.config.jobs.len() < 2 {
+                    screen.message =
+                        Some(("There are fewer than two jobs now.".to_string(), Tone::Dim));
+                    if let Err(f) = refresh(paths, &mut screen, None) {
+                        return report("jobs", false, f);
+                    }
+                    continue;
+                }
+                let opts = super::run::Options::default();
+                let mut ended = RunEnd::NotRun;
+                let what = match super::run::pick_several(paths, &file.config).await? {
+                    // Back from all or some: the list as it was.
+                    None => continue,
+                    Some(super::run::Chosen::Job(name)) => {
+                        super::run::run_job_ended(paths, rclone, Some(&name), &opts, &mut ended)
+                            .await?;
+                        name
+                    }
+                    Some(super::run::Chosen::Several(names)) => {
+                        let what = format!("{} jobs", names.len());
+                        super::run::run_batch_ended(paths, rclone, Some(names), &opts, &mut ended)
+                            .await?;
+                        what
+                    }
+                };
+                if let Err(f) = after_run(paths, &mut screen, &what, &ended, None).await? {
+                    return report("jobs", false, f);
+                }
                 continue;
             }
             screen::Action::Add => add_with_form(paths, rclone, None, false).await,
@@ -571,6 +592,137 @@ pub async fn interactive(paths: &Paths, rclone: &Rclone) -> Result<ExitCode> {
             select.as_deref(),
         );
     }
+}
+
+/// After a run from the list (`what`: a job's name, or `3 jobs`): lets its
+/// summaries be read, then says how it went and refreshes the list from
+/// disk, the cursor on `select` or where it was.
+async fn after_run(
+    paths: &Paths,
+    screen: &mut screen::Screen,
+    what: &str,
+    ended: &RunEnd,
+    select: Option<&str>,
+) -> Result<Checked<()>> {
+    // The summaries are on the normal screen (or, inside the session, on
+    // the output screen); let them be read before the list takes the
+    // screen back.
+    tokio::task::spawn_blocking(|| {
+        crate::ui::pause(&theme::paint(
+            "Press any key to go back to the jobs list.",
+            Tone::Dim,
+            theme::colour_on_stdout(),
+        ))
+    })
+    .await
+    .context("the jobs screen stopped unexpectedly")??;
+    screen.message = Some(ran_message(what, ended));
+    Ok(refresh(paths, screen, select))
+}
+
+/// Reloads the list's jobs and statuses from disk, the cursor on `select`
+/// or where it was.
+fn refresh(paths: &Paths, screen: &mut screen::Screen, select: Option<&str>) -> Checked<()> {
+    let file = load(paths)?;
+    screen.now = now();
+    screen.set_jobs(job_views(&file.config.jobs, &load_state(paths)), select);
+    Ok(())
+}
+
+/// The line the list shows after a run from it: `what` is the job's name,
+/// or `3 jobs` for a batch.
+fn ran_message(what: &str, ended: &RunEnd) -> (String, Tone) {
+    let warn = |text: String| (format!("{} {text}", theme::SKIPPED), Tone::Warning);
+    let see = "see onefolder jobs list";
+    match ended {
+        RunEnd::NotRun => warn(format!("Did not run {what}")),
+        RunEnd::Ran(jobs) if jobs.len() == 1 => {
+            let (end, results) = &jobs[0];
+            match end {
+                JobEnd::Ok => (format!("{} Ran {what}", theme::DONE), Tone::Success),
+                JobEnd::Stopped => warn(format!("Stopped {what}")),
+                _ if results.iter().all(|r| *r == DestResult::Declined) => {
+                    warn(format!("Did not run {what}: not confirmed"))
+                }
+                JobEnd::Failed => (
+                    format!("{} {what} failed: {see}", theme::FAILED),
+                    Tone::Error,
+                ),
+                _ => warn(format!("Ran {what}, not everything went across: {see}")),
+            }
+        }
+        RunEnd::Ran(jobs) => {
+            let of = jobs.len();
+            let ran = jobs
+                .iter()
+                .filter(|(end, _)| matches!(end, JobEnd::Ok | JobEnd::Partial | JobEnd::Failed))
+                .count();
+            if jobs
+                .iter()
+                .any(|(end, _)| matches!(end, JobEnd::Stopped | JobEnd::NotRun))
+            {
+                warn(format!("Stopped; {ran} of {of} jobs ran"))
+            } else if jobs.iter().all(|(end, _)| *end == JobEnd::Ok) {
+                (format!("{} Ran {of} jobs", theme::DONE), Tone::Success)
+            } else if ran == of {
+                warn(format!("Ran {of} jobs, not everything went across: {see}"))
+            } else {
+                warn(format!(
+                    "Ran {ran} of {of} jobs, not everything went across: {see}"
+                ))
+            }
+        }
+    }
+}
+
+/// Saves a job moved on the screen to the config. When that fails, or the
+/// file's order no longer matches the screen's (changed elsewhere), the
+/// screen shows the file as it is, with the reason on failure; if the
+/// file cannot even be read, the move is undone on the screen.
+fn save_move(paths: &Paths, screen: &mut screen::Screen, name: &str, down: bool) {
+    let order = match move_job(paths, name, down) {
+        Ok(order) => order,
+        Err(message) => {
+            screen.message = Some((format!("{} {message}", theme::FAILED), Tone::Error));
+            Vec::new()
+        }
+    };
+    if screen.jobs.iter().map(|j| &j.name).eq(order.iter()) {
+        return;
+    }
+    if refresh(paths, screen, Some(name)).is_err() {
+        if let Some(at) = screen.jobs.iter().position(|j| j.name == name) {
+            let back = if down {
+                at.checked_sub(1)
+            } else {
+                Some(at + 1)
+            };
+            if let Some(back) = back.filter(|b| *b < screen.jobs.len()) {
+                screen.jobs.swap(at, back);
+                screen.cursor = back;
+            }
+        }
+    }
+}
+
+/// Moves job `name` one place down (or up) in the config file and saves
+/// it, comments and all. Gives back the job names in their saved order;
+/// at either end nothing moves.
+pub(crate) fn move_job(
+    paths: &Paths,
+    name: &str,
+    down: bool,
+) -> std::result::Result<Vec<String>, String> {
+    let mut file = load(paths).map_err(|f| f.message)?;
+    let Some(at) = file.config.jobs.iter().position(|j| j.name == name) else {
+        return Err(unknown_job(name, &file).message);
+    };
+    let to = if down { at + 1 } else { at.wrapping_sub(1) };
+    if to < file.config.jobs.len() {
+        file.config.jobs.swap(at, to);
+        file.save().map_err(|e| format!("{e:#}"))?;
+    }
+    Ok(file.config.jobs.iter().map(|j| j.name.clone()).collect())
 }
 
 // ------------------------------------------------------------ capture
@@ -1667,6 +1819,315 @@ fn confirm(question: &str) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn three_job_config() -> (tempfile::TempDir, Paths) {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: dir.path().join("config"),
+            data_dir: dir.path().join("data"),
+        };
+        std::fs::create_dir_all(&paths.config_dir).unwrap();
+        write_jobs(&paths, &["documents", "records", "photos"]);
+        (dir, paths)
+    }
+
+    /// Writes a config with the jobs in that order (ids by name, so a job
+    /// keeps its destination whatever the order).
+    fn write_jobs(paths: &Paths, names: &[&str]) {
+        let root = paths.config_dir.parent().unwrap();
+        let mut text = String::from("version = 1\n");
+        for name in names {
+            text.push_str(&format!(
+                "\n[[jobs]]\nname = \"{name}\"\nsource = \"{src}\"\n\n  [[jobs.destinations]]\n  \
+                 id = \"d-{id}\"\n  type = \"local\"\n  path = \"{dst}\"\n",
+                id = match *name {
+                    "documents" => "0001",
+                    "records" => "0002",
+                    _ => "0003",
+                },
+                src = root.join(name).display(),
+                dst = root.join(format!("{name}-copy")).display(),
+            ));
+        }
+        std::fs::write(paths.config_file(), text).unwrap();
+    }
+
+    fn screen_of(paths: &Paths) -> screen::Screen {
+        screen::Screen::new(
+            job_views(&load(paths).unwrap().config.jobs, &State::default()),
+            0,
+        )
+    }
+
+    fn shown(screen: &screen::Screen) -> Vec<&str> {
+        screen.jobs.iter().map(|j| j.name.as_str()).collect()
+    }
+
+    fn big_j() -> crossterm::event::KeyEvent {
+        crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('J'),
+            crossterm::event::KeyModifiers::SHIFT,
+        )
+    }
+
+    /// The file was reordered elsewhere after the list was drawn: the move
+    /// is made on the file as it is, and the list shows the file.
+    #[test]
+    fn a_move_on_a_file_changed_elsewhere_shows_the_file() {
+        let (_dir, paths) = three_job_config();
+        let mut screen = screen_of(&paths);
+        write_jobs(&paths, &["photos", "documents", "records"]);
+        let Some(screen::Action::Move { name, down }) = screen.handle_key(big_j()) else {
+            panic!("a move");
+        };
+        assert_eq!(shown(&screen), ["records", "documents", "photos"]);
+        save_move(&paths, &mut screen, &name, down);
+        assert_eq!(shown(&screen), ["photos", "records", "documents"]);
+        assert_eq!(screen.jobs[screen.cursor].name, "documents", "cursor kept");
+        assert_eq!(screen.message, None);
+    }
+
+    /// A file that can neither be saved nor read again: the move is undone
+    /// on the screen, with the reason.
+    #[test]
+    fn a_move_that_cannot_be_saved_or_reloaded_is_undone() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_dir, paths) = three_job_config();
+        let mut screen = screen_of(&paths);
+        screen.cursor = 1;
+        let Some(screen::Action::Move { name, down }) = screen.handle_key(big_j()) else {
+            panic!("a move");
+        };
+        assert_eq!(shown(&screen), ["documents", "photos", "records"]);
+        std::fs::set_permissions(paths.config_file(), std::fs::Permissions::from_mode(0o000))
+            .unwrap();
+        save_move(&paths, &mut screen, &name, down);
+        std::fs::set_permissions(paths.config_file(), std::fs::Permissions::from_mode(0o600))
+            .unwrap();
+        assert_eq!(shown(&screen), ["documents", "records", "photos"]);
+        assert_eq!(screen.cursor, 1);
+        assert_eq!(screen.message.as_ref().map(|(_, t)| *t), Some(Tone::Error));
+    }
+
+    /// After a run from the list: fresh statuses, the cursor on the job
+    /// that ran even when the file moved it, or still on the several-jobs
+    /// row after a batch.
+    #[test]
+    fn the_list_after_a_run_is_fresh_and_keeps_the_cursor() {
+        let (_dir, paths) = three_job_config();
+        let mut screen = screen_of(&paths);
+        screen.cursor = 1;
+        assert!(screen.jobs[1].destinations[0].last_run.is_none());
+        std::fs::create_dir_all(&paths.data_dir).unwrap();
+        std::fs::write(
+            paths.state_file(),
+            r#"{"version": 1, "runs": {"records/d-0002": {
+                "started": "2026-10-13T09:41:02+11:00", "finished": "2026-10-13T09:43:40+11:00",
+                "mode": "one-way", "dry_run": false, "outcome": "ok",
+                "log": "logs/records/d-0002/x.jsonl", "rclone_version": "1.75.2"}}}"#,
+        )
+        .unwrap();
+        write_jobs(&paths, &["records", "documents", "photos"]);
+        refresh(&paths, &mut screen, Some("records")).unwrap();
+        assert_eq!(screen.jobs[screen.cursor].name, "records");
+        assert!(screen.jobs[screen.cursor].destinations[0]
+            .last_run
+            .is_some());
+        // A batch from the row: back on the row.
+        screen.on_several = true;
+        screen.cursor = 0;
+        refresh(&paths, &mut screen, None).unwrap();
+        assert!(screen.on_several);
+    }
+
+    #[test]
+    fn the_line_after_a_run_says_what_happened() {
+        use DestResult::{Declined, Ran, Skipped};
+        let ok = Ran(crate::model::Outcome::Ok);
+        let failed = Ran(crate::model::Outcome::Failed);
+        let cancelled = Ran(crate::model::Outcome::Cancelled);
+        let one = |end: JobEnd, results: Vec<DestResult>| RunEnd::Ran(vec![(end, results)]);
+        let text = |what: &str, ended: RunEnd| ran_message(what, &ended);
+        assert_eq!(
+            text("documents", one(JobEnd::Ok, vec![ok])),
+            ("✓ Ran documents".to_string(), Tone::Success)
+        );
+        assert_eq!(
+            text("documents", RunEnd::NotRun),
+            ("◎ Did not run documents".to_string(), Tone::Warning)
+        );
+        assert_eq!(
+            text("documents", one(JobEnd::Stopped, vec![cancelled, Skipped])).0,
+            "◎ Stopped documents"
+        );
+        assert_eq!(
+            text("documents", one(JobEnd::Partial, vec![Declined])).0,
+            "◎ Did not run documents: not confirmed"
+        );
+        assert_eq!(
+            text("documents", one(JobEnd::Failed, vec![failed])),
+            (
+                "✗ documents failed: see onefolder jobs list".to_string(),
+                Tone::Error
+            )
+        );
+        assert_eq!(
+            text("documents", one(JobEnd::Partial, vec![ok, failed])).0,
+            "◎ Ran documents, not everything went across: see onefolder jobs list"
+        );
+        // A batch.
+        let batch =
+            |ends: Vec<JobEnd>| RunEnd::Ran(ends.into_iter().map(|e| (e, vec![])).collect());
+        assert_eq!(
+            text("3 jobs", batch(vec![JobEnd::Ok, JobEnd::Ok, JobEnd::Ok])),
+            ("✓ Ran 3 jobs".to_string(), Tone::Success)
+        );
+        // Ctrl-C at the first preview: nothing ran.
+        assert_eq!(
+            text(
+                "3 jobs",
+                batch(vec![JobEnd::Stopped, JobEnd::NotRun, JobEnd::NotRun])
+            ),
+            ("◎ Stopped; 0 of 3 jobs ran".to_string(), Tone::Warning)
+        );
+        assert_eq!(
+            text(
+                "3 jobs",
+                batch(vec![JobEnd::Ok, JobEnd::Partial, JobEnd::Ok])
+            )
+            .0,
+            "◎ Ran 3 jobs, not everything went across: see onefolder jobs list"
+        );
+        assert_eq!(
+            text(
+                "3 jobs",
+                batch(vec![
+                    JobEnd::Ok,
+                    JobEnd::Skipped("another run in progress".into()),
+                    JobEnd::Ok
+                ])
+            )
+            .0,
+            "◎ Ran 2 of 3 jobs, not everything went across: see onefolder jobs list"
+        );
+        assert_eq!(text("3 jobs", RunEnd::NotRun).0, "◎ Did not run 3 jobs");
+    }
+
+    /// A job moved on the Jobs screen is saved in its new place, its
+    /// comments with it, and the rest of the file is kept.
+    #[test]
+    fn a_job_moved_on_the_screen_is_saved_in_its_new_place() {
+        use std::fs;
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: dir.path().join("config"),
+            data_dir: dir.path().join("data"),
+        };
+        let mut text = String::from("# My jobs.\nversion = 1\n");
+        for (name, id) in [
+            ("documents", "d-0001"),
+            ("records", "d-0002"),
+            ("photos", "d-0003"),
+        ] {
+            text.push_str(&format!(
+                "\n# The {name} job.\n[[jobs]]\nname = \"{name}\"\nsource = \"{src}\"\n\n  \
+                 [[jobs.destinations]]\n  id = \"{id}\"\n  type = \"local\"\n  path = \"{dst}\"\n",
+                src = dir.path().join(name).display(),
+                dst = dir.path().join(format!("{name}-copy")).display(),
+            ));
+        }
+        text.push_str("\n[extra]\nkept = true\n");
+        fs::create_dir_all(&paths.config_dir).unwrap();
+        fs::write(paths.config_file(), &text).unwrap();
+        let mut screen = screen::Screen::new(
+            job_views(&load(&paths).unwrap().config.jobs, &State::default()),
+            0,
+        );
+        // j on the first job, as the screen hands it over.
+        let key = crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('j'),
+            crossterm::event::KeyModifiers::NONE,
+        );
+        let Some(screen::Action::Move { name, down }) = screen.handle_key(key) else {
+            panic!("a move");
+        };
+        save_move(&paths, &mut screen, &name, down);
+        assert_eq!(screen.message, None);
+        let saved = fs::read_to_string(paths.config_file()).unwrap();
+        let at = |needle: &str| {
+            saved
+                .find(needle)
+                .unwrap_or_else(|| panic!("{needle}: {saved}"))
+        };
+        assert!(at("# My jobs.") < at("# The records job."), "{saved}");
+        assert!(
+            at("# The records job.") < at("name = \"records\""),
+            "{saved}"
+        );
+        assert!(
+            at("name = \"records\"") < at("# The documents job."),
+            "{saved}"
+        );
+        assert!(
+            at("# The documents job.") < at("name = \"documents\""),
+            "{saved}"
+        );
+        assert!(
+            at("name = \"documents\"") < at("# The photos job."),
+            "{saved}"
+        );
+        assert!(saved.ends_with("[extra]\nkept = true\n"), "{saved}");
+        let order = |paths: &Paths| -> Vec<String> {
+            load(paths)
+                .unwrap()
+                .config
+                .jobs
+                .iter()
+                .map(|j| j.name.clone())
+                .collect()
+        };
+        assert_eq!(order(&paths), ["records", "documents", "photos"]);
+        // Up and down again; nothing moves past either end.
+        assert_eq!(
+            move_job(&paths, "photos", true).unwrap(),
+            ["records", "documents", "photos"]
+        );
+        assert_eq!(
+            move_job(&paths, "records", false).unwrap(),
+            ["records", "documents", "photos"]
+        );
+        assert_eq!(
+            move_job(&paths, "photos", false).unwrap(),
+            ["records", "photos", "documents"]
+        );
+        assert!(move_job(&paths, "nope", true).is_err());
+        // A file that cannot be saved: the screen says so and shows the
+        // order on disk.
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o500)).unwrap();
+        let mut screen = screen::Screen::new(
+            job_views(&load(&paths).unwrap().config.jobs, &State::default()),
+            0,
+        );
+        let Some(screen::Action::Move { name, down }) = screen.handle_key(key) else {
+            panic!("a move");
+        };
+        assert_eq!(screen.jobs[0].name, "photos", "moved on the screen");
+        save_move(&paths, &mut screen, &name, down);
+        fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o700)).unwrap();
+        let (message, tone) = screen.message.clone().expect("a message");
+        assert_eq!(tone, Tone::Error);
+        assert!(message.contains("could not save"), "{message}");
+        assert_eq!(
+            screen
+                .jobs
+                .iter()
+                .map(|j| j.name.as_str())
+                .collect::<Vec<_>>(),
+            ["records", "photos", "documents"]
+        );
+        assert_eq!(order(&paths), ["records", "photos", "documents"]);
+    }
 
     #[test]
     fn onedrive_flag_values() {

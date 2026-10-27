@@ -5,11 +5,10 @@
 //!
 //! ⚙ rclone 1.75.2 · 2 accounts · 3 jobs · last run 2h ago
 //!
-//! ➤ Run a job    last: documents ✓ 2h ago
-//!   Jobs         3 jobs · 4 destinations · 1 drive not mounted
-//!   Accounts     2 accounts · all in rclone's config
-//!   Status       needs a look: notes
-//!   Doctor       checks rclone, accounts and drives · 48 logs, 12.4 MB
+//! ➤ Jobs        3 jobs · last: documents ✓ 2h ago · 1 drive not mounted
+//!   Accounts    2 accounts · all in rclone's config
+//!   Status      needs a look: notes
+//!   Doctor      checks rclone, accounts and drives · 48 logs, 12.4 MB
 //!   Quit
 //!
 //! ↑↓ j/k move · enter select · ? keys · q quit
@@ -18,6 +17,7 @@
 //! Each item carries a short status, worked out without the network (the
 //! doctor's account checks are not run). Enter opens the item; the caller
 //! comes back here once its output has been read. `?` shows the keys.
+//! Jobs runs jobs too: from its list, one or several one after another.
 
 use anyhow::{Context, Result};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -31,7 +31,6 @@ use crate::ui::theme::{self, Tone};
 /// What the user picked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Choice {
-    RunJob,
     Jobs,
     Accounts,
     Status,
@@ -40,8 +39,7 @@ pub enum Choice {
 }
 
 impl Choice {
-    pub const ALL: [Choice; 6] = [
-        Choice::RunJob,
+    pub const ALL: [Choice; 5] = [
         Choice::Jobs,
         Choice::Accounts,
         Choice::Status,
@@ -51,7 +49,6 @@ impl Choice {
 
     pub fn label(self) -> &'static str {
         match self {
-            Choice::RunJob => "Run a job",
             Choice::Jobs => "Jobs",
             Choice::Accounts => "Accounts",
             Choice::Status => "Status",
@@ -67,15 +64,20 @@ impl Choice {
 pub struct MenuStatus {
     pub header: String,
     pub items: Vec<(String, Tone)>,
+    /// Shorter statuses for an item (same order as `items`; missing or
+    /// empty for none), longest first. On a narrow screen the first that
+    /// fits is shown; when none does, the last is cut with `…`.
+    pub shorter: Vec<Vec<(String, Tone)>>,
 }
 
 /// The keys, for the `?` overlay. Shared with the lists the menu opens.
-pub const KEYS: [(&str, &str); 10] = [
+pub const KEYS: [(&str, &str); 11] = [
     ("↑↓  j/k", "move"),
     ("g  G", "first, last"),
     ("enter", "open the item; you come back here after"),
     ("/", "filter the jobs or accounts list"),
     ("a  e  d", "add, edit, remove in a list"),
+    ("j  k", "in the Jobs list: move the job down, up"),
     ("t  r", "test, reconnect an account"),
     ("y  n", "answer a question"),
     ("?", "show or hide these keys"),
@@ -157,13 +159,11 @@ impl Menu {
             } else {
                 vec![Span::raw("  "), Span::raw(label)]
             };
-            if let Some((text, tone)) = self.status.items.get(i).filter(|(t, _)| !t.is_empty()) {
-                let tone = if *tone == Tone::Plain {
-                    Tone::Dim
-                } else {
-                    *tone
-                };
-                spans.push(Span::styled(fit(text, 2 + label_w), theme::style(tone)));
+            if let Some((text, tone)) =
+                self.item_status(i, width.map(|w| w.saturating_sub(2 + label_w)))
+            {
+                let tone = if tone == Tone::Plain { Tone::Dim } else { tone };
+                spans.push(Span::styled(fit(&text, 2 + label_w), theme::style(tone)));
             }
             lines.push(Line::from(spans));
         }
@@ -181,6 +181,21 @@ impl Menu {
             theme::style(Tone::Dim),
         )));
         lines
+    }
+
+    /// Item `i`'s status: the full one, or with a `room` the first of its
+    /// shorter ones that fits (the shortest when none does). `None` when
+    /// the item says nothing.
+    fn item_status(&self, i: usize, room: Option<usize>) -> Option<(String, Tone)> {
+        let full = self.status.items.get(i).filter(|(t, _)| !t.is_empty())?;
+        let Some(room) = room else {
+            return Some(full.clone());
+        };
+        let shorter = self.status.shorter.get(i).map_or(&[][..], Vec::as_slice);
+        let fits = std::iter::once(full)
+            .chain(shorter)
+            .find(|(t, _)| super::width(t) <= room);
+        Some(fits.or(shorter.last()).unwrap_or(full).clone())
     }
 
     pub fn render(&self, frame: &mut Frame) {
@@ -281,9 +296,8 @@ mod tests {
         MenuStatus {
             header: "rclone 1.75.2 · 2 accounts · 3 jobs · last run 2h ago".into(),
             items: vec![
-                ("last: documents ✓ 2h ago".into(), Tone::Plain),
                 (
-                    "3 jobs · 4 destinations · 1 drive not mounted".into(),
+                    "3 jobs · last: documents ✓ 2h ago · 1 drive not mounted".into(),
                     Tone::Warning,
                 ),
                 ("2 accounts · all in rclone's config".into(), Tone::Plain),
@@ -294,6 +308,10 @@ mod tests {
                 ),
                 (String::new(), Tone::Plain),
             ],
+            shorter: vec![vec![
+                ("3 jobs · 1 drive not mounted".into(), Tone::Warning),
+                ("3 jobs".into(), Tone::Plain),
+            ]],
         }
     }
 
@@ -314,8 +332,9 @@ mod tests {
         m.handle_key(key(KeyCode::Char('g')));
         assert_eq!(m.cursor, 0);
         m.handle_key(key(KeyCode::Char('G')));
-        assert_eq!(m.cursor, 5);
-        m.cursor = 4;
+        assert_eq!(m.cursor, 4);
+        assert_eq!(Choice::ALL[0], Choice::Jobs, "Jobs is the top item");
+        m.cursor = 3;
         assert_eq!(m.handle_key(key(KeyCode::Enter)), Some(Choice::Doctor));
     }
 
@@ -342,9 +361,14 @@ mod tests {
 
     #[test]
     fn renders_at_80_columns() {
-        let mut m = Menu::new(status());
-        m.cursor = 1;
-        snapshot("menu_80", render(&m, 80));
+        let m = Menu::new(status());
+        let text = render(&m, 80);
+        assert!(!text.contains("Run a job"), "{text}");
+        assert!(
+            text.contains("➤ Jobs        3 jobs · last: documents ✓ 2h ago · 1 drive not mounted"),
+            "{text}"
+        );
+        snapshot("menu_80", text);
     }
 
     #[test]
@@ -352,10 +376,27 @@ mod tests {
         let mut m = Menu::new(status());
         m.cursor = 1;
         let text = render(&m, 40);
-        // Shortened at a part or a word, never inside a word.
-        assert!(text.contains("3 jobs · 4…"), "{text}");
-        assert!(!text.contains("destinati…"), "{text}");
+        // The Jobs item keeps its count; others are shortened at a part
+        // or a word, never inside a word.
+        assert!(text.contains("  Jobs        3 jobs  "), "{text}");
+        assert!(!text.contains("last:"), "{text}");
+        assert!(!text.contains("rclone's co…"), "{text}");
         snapshot("menu_40", text);
+    }
+
+    #[test]
+    fn the_jobs_item_drops_the_last_run_first_then_the_drives() {
+        let m = Menu::new(status());
+        let jobs_line = |width: usize| {
+            m.lines(Some(width))[4]
+                .spans
+                .iter()
+                .map(|s| s.content.to_string())
+                .collect::<String>()
+        };
+        assert!(jobs_line(80).ends_with("2h ago · 1 drive not mounted"));
+        assert!(jobs_line(50).ends_with("Jobs        3 jobs · 1 drive not mounted"));
+        assert!(jobs_line(30).ends_with("Jobs        3 jobs"));
     }
 
     #[test]

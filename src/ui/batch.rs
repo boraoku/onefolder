@@ -1,9 +1,9 @@
 //! Several jobs, one after another: the screens around a batch.
 //!
-//! - The last row of `Run which job?` (`Several jobs, one after
-//!   another…`) leads to [`all_or_some`], then, for some, to the
-//!   selection screen [`ChooseJobs`], whose ticks are remembered in the
-//!   state file (`batch_unticked`).
+//! - The first row of the Jobs list and the last row of `Run which job?`
+//!   (`Several jobs, one after another…`) lead to [`all_or_some`], then,
+//!   for some, to the selection screen [`ChooseJobs`], whose ticks are
+//!   remembered in the state file (`batch_unticked`).
 //! - [`BatchLine`] is the dim line at the very top of every screen of a
 //!   batch: which job of how many, and how the jobs so far ended. Without
 //!   a terminal the plain output prints [`job_heading`] before each job
@@ -34,7 +34,7 @@ fn plural(n: usize, word: &str) -> String {
     }
 }
 
-/// The last row of the `Run which job?` list.
+/// The first row of the Jobs list and the last of the `Run which job?` list.
 pub const SEVERAL: &str = "Several jobs, one after another…";
 
 /// The reason a job is not run once Ctrl-C has stopped the batch.
@@ -200,7 +200,7 @@ pub fn all_or_some(jobs: usize) -> Picker {
     );
     picker.extra = Some("Choose jobs…".to_string());
     picker.note = Some(format!(
-        "{jobs} jobs, run one after another in the order of your config."
+        "{jobs} jobs, run one after another in the order of the Jobs list."
     ));
     picker.esc = "back";
     picker

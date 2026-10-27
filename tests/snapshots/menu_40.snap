@@ -1,5 +1,6 @@
 ---
 source: src/ui/menu.rs
+assertion_line: 418
 expression: value
 ---
 "                                        "
@@ -7,14 +8,14 @@ expression: value
 "                                        "
 "  ⚙ rclone 1.75.2 · 2 accounts…         "
 "                                        "
-"    Run a job    last: documents ✓ 2h…  "
-"  ➤ Jobs         3 jobs · 4…            "
-"    Accounts     2 accounts…            "
-"    Status       needs a look: notes    "
-"    Doctor       checks rclone…         "
+"    Jobs        3 jobs                  "
+"  ➤ Accounts    2 accounts…             "
+"    Status      needs a look: notes     "
+"    Doctor      checks rclone…          "
 "    Quit                                "
 "                                        "
 "  ↑↓ j/k move · enter select · ? keys…  "
+"                                        "
 "                                        "
 "                                        "
 "                                        "

@@ -1,6 +1,9 @@
 //! The jobs list: printed by `onefolder jobs list`, and the interactive
 //! screen behind `onefolder jobs` (and the menu's Jobs entry) where
-//! a, e and d add, edit and remove.
+//! Enter runs a job, a, e and d add, edit and remove, and j and k move a
+//! job down or up the list (and the config); here only the arrows move
+//! the cursor. With two jobs or more its
+//! first row, `Several jobs, one after another…`, runs a batch.
 //!
 //! [`list_lines`] decides the text and tone of every piece, so the printed
 //! list and the screen always say the same thing.
@@ -330,6 +333,14 @@ pub enum Action {
     /// Already confirmed on the screen.
     Remove(String),
     Run(String),
+    /// The `Several jobs, one after another…` row.
+    Several,
+    /// The job was moved one place down (or up) on the screen; the config
+    /// should follow. Handled by [`run`]'s `moved`, never returned.
+    Move {
+        name: String,
+        down: bool,
+    },
     Back,
 }
 
@@ -337,7 +348,12 @@ pub enum Action {
 #[derive(Debug, Clone)]
 pub struct Screen {
     pub jobs: Vec<JobView>,
+    /// The job under the cursor, among those shown.
     pub cursor: usize,
+    /// The cursor is on the `Several jobs, one after another…` row, above
+    /// the jobs, rather than on a job; `cursor` is then 0, so leaving the
+    /// row lands on the first job.
+    pub on_several: bool,
     /// Index of the job waiting for a y/n to remove.
     pub confirm: Option<usize>,
     /// A line above the key hints: the result of the last action.
@@ -353,13 +369,14 @@ pub struct Screen {
 }
 
 /// The keys of the jobs list, for its `?` overlay.
-pub const KEYS: [(&str, &str); 11] = [
-    ("↑↓  j/k", "move"),
+pub const KEYS: [(&str, &str); 12] = [
+    ("↑↓", "move"),
     ("g  G", "first, last"),
-    ("enter", "run the job"),
+    ("enter", "run the job, or several"),
     ("a", "add a job"),
     ("e", "edit the job"),
     ("d", "remove the job (asks first)"),
+    ("j  k", "move the job down or up the list"),
     ("/", "filter by name, folder or destination"),
     ("?", "show or hide these keys"),
     ("esc", "clear the filter, or go back"),
@@ -377,6 +394,7 @@ impl Screen {
         Screen {
             jobs,
             cursor: 0,
+            on_several: false,
             confirm: None,
             message: None,
             now,
@@ -384,6 +402,12 @@ impl Screen {
             filtering: false,
             help: false,
         }
+    }
+
+    /// The `Several jobs, one after another…` row is shown: two jobs or
+    /// more, and no filter.
+    pub fn several_shown(&self) -> bool {
+        self.jobs.len() > 1 && !self.filtering && self.filter.is_empty()
     }
 
     /// Indexes of the jobs the filter lets through.
@@ -409,7 +433,9 @@ impl Screen {
             .collect()
     }
 
-    /// Replaces the jobs, keeping the cursor on the same name when it is still there.
+    /// Replaces the jobs, keeping the cursor on the same name (or on the
+    /// several-jobs row) when it is still there. `select` puts it on that
+    /// job instead.
     pub fn set_jobs(&mut self, jobs: Vec<JobView>, select: Option<&str>) {
         let keep = select.map(str::to_string).or_else(|| self.selected());
         self.jobs = jobs;
@@ -418,6 +444,10 @@ impl Screen {
             .and_then(|name| shown.iter().position(|j| j.name == name))
             .unwrap_or(self.cursor)
             .min(shown.len().saturating_sub(1));
+        self.on_several &= select.is_none() && self.several_shown();
+        if self.on_several {
+            self.cursor = 0;
+        }
         self.confirm = None;
     }
 
@@ -445,6 +475,35 @@ impl Screen {
             _ => {}
         }
         self.cursor = 0;
+        self.on_several = false;
+    }
+
+    /// Moves the job under the cursor one place down (or up), the cursor
+    /// with it. Not past either end, and never above the several-jobs row.
+    fn move_job(&mut self, down: bool) -> Option<Action> {
+        if !self.filter.is_empty() {
+            self.message = Some(("Clear the filter to reorder.".to_string(), Tone::Dim));
+            return None;
+        }
+        if self.on_several {
+            self.message = Some(("Pick a job to move.".to_string(), Tone::Dim));
+            return None;
+        }
+        let to = if down {
+            self.cursor + 1
+        } else {
+            self.cursor.checked_sub(1)?
+        };
+        if to >= self.jobs.len() {
+            return None;
+        }
+        self.jobs.swap(self.cursor, to);
+        self.cursor = to;
+        self.message = None;
+        Some(Action::Move {
+            name: self.jobs[to].name.clone(),
+            down,
+        })
     }
 
     /// Applies one key. Returns an action once the user has chosen one.
@@ -468,9 +527,11 @@ impl Screen {
             return None;
         }
         let last = self.visible().len().saturating_sub(1);
+        let pick_a_job = |doing: &str| Some((format!("Pick a job to {doing}."), Tone::Dim));
         match key.code {
             KeyCode::Char('/') => {
                 self.filtering = true;
+                self.on_several = false;
                 self.message = None;
             }
             KeyCode::Char('?') => self.help = true,
@@ -478,13 +539,40 @@ impl Screen {
                 self.filter.clear();
                 self.cursor = 0;
             }
-            KeyCode::Up | KeyCode::Char('k') => self.cursor = self.cursor.saturating_sub(1),
-            KeyCode::Down | KeyCode::Char('j') => self.cursor = (self.cursor + 1).min(last),
-            KeyCode::Home | KeyCode::Char('g') => self.cursor = 0,
-            KeyCode::End | KeyCode::Char('G') => self.cursor = last,
+            // J and K too, as Shift+j and Shift+k arrive.
+            KeyCode::Char('k') | KeyCode::Char('K') => return self.move_job(false),
+            KeyCode::Char('j') | KeyCode::Char('J') => return self.move_job(true),
+            KeyCode::Up => {
+                // On the row the cursor is 0 too, so it stays there.
+                if self.cursor == 0 {
+                    self.on_several |= self.several_shown();
+                } else {
+                    self.cursor -= 1;
+                }
+            }
+            KeyCode::Down => {
+                if self.on_several {
+                    self.on_several = false;
+                } else {
+                    self.cursor = (self.cursor + 1).min(last);
+                }
+            }
+            KeyCode::Home | KeyCode::Char('g') => {
+                self.cursor = 0;
+                self.on_several = self.several_shown();
+            }
+            KeyCode::End | KeyCode::Char('G') => {
+                self.cursor = last;
+                self.on_several = false;
+            }
             KeyCode::Char('a') => return Some(Action::Add),
+            KeyCode::Char('e') if self.on_several => self.message = pick_a_job("edit"),
             KeyCode::Char('e') => return self.selected().map(Action::Edit),
+            KeyCode::Enter if self.on_several => return Some(Action::Several),
             KeyCode::Enter => return self.selected().map(Action::Run),
+            KeyCode::Char('d') | KeyCode::Delete if self.on_several => {
+                self.message = pick_a_job("remove");
+            }
             KeyCode::Char('d') | KeyCode::Delete => {
                 if let Some(name) = self.selected() {
                     self.confirm = self.jobs.iter().position(|j| j.name == name);
@@ -533,25 +621,73 @@ impl Screen {
             )]));
             return lines;
         }
+        if self.several_shown() {
+            let text = match width {
+                Some(w) => super::fit_text(super::batch::SEVERAL, w.saturating_sub(2)),
+                None => super::batch::SEVERAL.to_string(),
+            };
+            lines.push(to_line(if self.on_several {
+                vec![
+                    (format!("{} ", theme::CURSOR), Tone::Accent),
+                    (text, Tone::Accent),
+                ]
+            } else {
+                vec![("  ".to_string(), Tone::Plain), (text, Tone::Plain)]
+            }));
+            lines.push(Line::default());
+        }
+        let cursor = (!self.on_several).then_some(self.cursor);
         lines.extend(
-            list_lines(&shown, Some(self.cursor), self.now, width)
+            list_lines(&shown, cursor, self.now, width)
                 .into_iter()
                 .map(to_line),
         );
         lines
     }
 
-    fn hints(&self) -> String {
+    /// The keys line. With a `width`, the keys that matter least are left
+    /// out until it fits (`?` still shows them all); Enter and q stay.
+    fn hints(&self, width: Option<usize>) -> String {
         let d = theme::DOT;
         if self.filtering {
-            format!("type to filter {d} enter keep {d} esc clear")
-        } else if self.jobs.is_empty() {
-            format!("a add {d} ? keys {d} q back")
-        } else {
-            format!(
-                "enter run {d} a add {d} e edit {d} d remove {d} / filter {d} ? keys {d} q back"
-            )
+            return format!("type to filter {d} enter keep {d} esc clear");
         }
+        // Each key with its rank: the lowest is left out first.
+        const KEEP: u8 = u8::MAX;
+        let mut keys: Vec<(&str, u8)> = if self.jobs.is_empty() {
+            vec![("a add", 1), ("? keys", 2), ("q back", KEEP)]
+        } else {
+            let mut keys = vec![
+                ("enter run", KEEP),
+                ("a add", 4),
+                ("e edit", 3),
+                ("d remove", 2),
+            ];
+            if self.jobs.len() > 1 && self.filter.is_empty() {
+                keys.push(("j/k move", 1));
+            }
+            keys.extend([("/ filter", 0), ("? keys", 5), ("q back", KEEP)]);
+            keys
+        };
+        let text = |keys: &[(&str, u8)]| {
+            keys.iter()
+                .map(|(k, _)| *k)
+                .collect::<Vec<_>>()
+                .join(&format!(" {d} "))
+        };
+        while width.is_some_and(|w| super::width(&text(&keys)) > w) {
+            let least = keys
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, rank))| *rank != KEEP)
+                .min_by_key(|(_, (_, rank))| *rank)
+                .map(|(i, _)| i);
+            match least {
+                Some(i) => keys.remove(i),
+                None => break,
+            };
+        }
+        text(&keys)
     }
 
     pub fn render(&self, frame: &mut Frame) {
@@ -602,7 +738,7 @@ impl Screen {
         }
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                self.hints(),
+                self.hints(Some(usize::from(area.width))),
                 theme::style(Tone::Dim),
             ))),
             Rect {
@@ -617,9 +753,11 @@ impl Screen {
     }
 }
 
-/// Shows the screen until the user chooses an action. The terminal is
-/// back to normal when this returns.
-pub fn run(screen: &mut Screen) -> Result<Action> {
+/// Shows the screen until the user chooses an action. A job moved with J
+/// or K is handed to `moved` (the screen, its name and whether it went
+/// down) to save while the screen stays up. The terminal is back to
+/// normal when this returns.
+pub fn run(screen: &mut Screen, mut moved: impl FnMut(&mut Screen, &str, bool)) -> Result<Action> {
     let mut terminal = super::screen()?;
     loop {
         terminal
@@ -632,8 +770,10 @@ pub fn run(screen: &mut Screen) -> Result<Action> {
             if key.kind != KeyEventKind::Press {
                 continue;
             }
-            if let Some(action) = screen.handle_key(key) {
-                return Ok(action);
+            match screen.handle_key(key) {
+                Some(Action::Move { name, down }) => moved(screen, &name, down),
+                Some(action) => return Ok(action),
+                None => {}
             }
         }
     }
@@ -885,13 +1025,13 @@ mod tests {
     fn keys() {
         let mut s = Screen::new(mockup(), NOW);
         s.handle_key(key(KeyCode::Down));
-        s.handle_key(key(KeyCode::Char('j')));
-        s.handle_key(key(KeyCode::Char('j')));
+        s.handle_key(key(KeyCode::Down));
+        s.handle_key(key(KeyCode::Down));
         assert_eq!(s.cursor, 2);
-        s.handle_key(key(KeyCode::Char('k')));
         s.handle_key(key(KeyCode::Up));
         s.handle_key(key(KeyCode::Up));
         assert_eq!(s.cursor, 0);
+        assert!(!s.on_several);
         assert_eq!(
             s.handle_key(key(KeyCode::Enter)),
             Some(Action::Run("documents".into()))
@@ -912,6 +1052,222 @@ mod tests {
         );
         assert_eq!(s.handle_key(key(KeyCode::Char('q'))), Some(Action::Back));
         assert_eq!(s.handle_key(key(KeyCode::Esc)), Some(Action::Back));
+    }
+
+    fn shift(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::SHIFT)
+    }
+
+    fn names(s: &Screen) -> Vec<&str> {
+        s.jobs.iter().map(|j| j.name.as_str()).collect()
+    }
+
+    #[test]
+    fn the_several_jobs_row_is_first_but_the_cursor_starts_on_a_job() {
+        let mut s = Screen::new(mockup(), NOW);
+        assert!(s.several_shown());
+        assert!(!s.on_several);
+        assert_eq!(s.cursor, 0);
+        // Up from the first job, and g, reach the row; Down leaves it.
+        s.handle_key(key(KeyCode::Up));
+        assert!(s.on_several);
+        s.handle_key(key(KeyCode::Up));
+        assert!(s.on_several, "nothing above it");
+        s.handle_key(key(KeyCode::Down));
+        assert!(!s.on_several);
+        assert_eq!(s.cursor, 0);
+        s.handle_key(key(KeyCode::Char('G')));
+        assert_eq!((s.on_several, s.cursor), (false, 2));
+        s.handle_key(key(KeyCode::Char('g')));
+        assert_eq!((s.on_several, s.cursor), (true, 0));
+        s.handle_key(key(KeyCode::End));
+        s.handle_key(key(KeyCode::Home));
+        assert!(s.on_several);
+        // Enter on it is the batch; e, d and the move keys do nothing.
+        assert_eq!(s.handle_key(key(KeyCode::Enter)), Some(Action::Several));
+        assert_eq!(s.handle_key(key(KeyCode::Char('e'))), None);
+        assert_eq!(
+            s.message,
+            Some(("Pick a job to edit.".to_string(), Tone::Dim))
+        );
+        assert_eq!(s.handle_key(key(KeyCode::Char('d'))), None);
+        assert_eq!(s.confirm, None);
+        assert_eq!(
+            s.message,
+            Some(("Pick a job to remove.".to_string(), Tone::Dim))
+        );
+        assert_eq!(s.handle_key(key(KeyCode::Char('j'))), None);
+        assert_eq!(s.handle_key(key(KeyCode::Char('k'))), None);
+        assert_eq!(s.handle_key(shift(KeyCode::Char('J'))), None);
+        assert_eq!(names(&s), ["documents", "photos", "notes"]);
+        assert!(s.on_several, "j and k do not move the cursor here");
+        assert_eq!(
+            s.message,
+            Some(("Pick a job to move.".to_string(), Tone::Dim))
+        );
+        assert_eq!(s.handle_key(key(KeyCode::Char('a'))), Some(Action::Add));
+        snapshot("jobs_several_80", render(&s, 80));
+    }
+
+    #[test]
+    fn one_job_or_a_filter_hides_the_several_jobs_row() {
+        let mut jobs = mockup();
+        jobs.truncate(1);
+        let mut s = Screen::new(jobs, NOW);
+        assert!(!s.several_shown());
+        s.handle_key(key(KeyCode::Up));
+        s.handle_key(key(KeyCode::Char('g')));
+        assert!(!s.on_several);
+        let text = render(&s, 80);
+        assert!(!text.contains("Several jobs"), "{text}");
+        assert!(!text.contains("j/k move"), "nothing to reorder: {text}");
+        snapshot("jobs_one_80", text);
+        // Typing a filter hides it and takes the cursor off it.
+        let mut s = Screen::new(mockup(), NOW);
+        s.handle_key(key(KeyCode::Char('g')));
+        assert!(s.on_several);
+        s.handle_key(key(KeyCode::Char('/')));
+        assert!(!s.on_several && !s.several_shown());
+        assert!(!render(&s, 80).contains("Several jobs"));
+        s.handle_key(key(KeyCode::Char('o')));
+        s.handle_key(key(KeyCode::Enter));
+        assert!(!s.several_shown(), "still filtered");
+        s.handle_key(key(KeyCode::Up));
+        s.handle_key(key(KeyCode::Char('g')));
+        assert!(!s.on_several);
+        // Cleared, it is back, the cursor on the first job.
+        s.handle_key(key(KeyCode::Esc));
+        assert!(s.several_shown() && !s.on_several);
+        assert!(render(&s, 80).contains("Several jobs, one after another…"));
+    }
+
+    #[test]
+    fn the_several_jobs_row_survives_a_refresh_but_not_a_new_selection() {
+        let mut s = Screen::new(mockup(), NOW);
+        s.handle_key(key(KeyCode::Char('g')));
+        // A refresh after a batch keeps the cursor on the row.
+        s.set_jobs(mockup(), None);
+        assert_eq!((s.on_several, s.cursor), (true, 0));
+        // A job just added (or edited) takes the cursor off it.
+        let mut jobs = mockup();
+        jobs.push(JobView {
+            name: "new".into(),
+            ..jobs[1].clone()
+        });
+        s.set_jobs(jobs.clone(), Some("new"));
+        assert_eq!((s.on_several, s.cursor), (false, 3));
+        assert_eq!(
+            s.handle_key(key(KeyCode::Enter)),
+            Some(Action::Run("new".into()))
+        );
+        // Down from the row always lands on the first job.
+        s.handle_key(key(KeyCode::Char('g')));
+        s.handle_key(key(KeyCode::Down));
+        assert_eq!((s.on_several, s.cursor), (false, 0));
+        // Down to one job: the row goes, the cursor is on that job.
+        s.handle_key(key(KeyCode::Char('g')));
+        jobs.truncate(1);
+        s.set_jobs(jobs, None);
+        assert_eq!((s.on_several, s.cursor), (false, 0));
+    }
+
+    #[test]
+    fn while_the_filter_is_typed_the_row_is_hidden() {
+        let mut s = Screen::new(mockup(), NOW);
+        s.handle_key(key(KeyCode::Char('/')));
+        s.handle_key(key(KeyCode::Char('o')));
+        let text = render(&s, 80);
+        assert!(!text.contains("Several jobs"), "{text}");
+        snapshot("jobs_filtering_80", text);
+    }
+
+    #[test]
+    fn j_and_k_move_the_job_and_the_cursor_follows() {
+        let moved = |down: bool| {
+            Some(Action::Move {
+                name: "documents".into(),
+                down,
+            })
+        };
+        let mut s = Screen::new(mockup(), NOW);
+        assert_eq!(s.handle_key(key(KeyCode::Char('j'))), moved(true));
+        assert_eq!(names(&s), ["photos", "documents", "notes"]);
+        assert_eq!(s.cursor, 1);
+        // Shift+j arrives as J and does the same.
+        assert_eq!(s.handle_key(shift(KeyCode::Char('J'))), moved(true));
+        assert_eq!(names(&s), ["photos", "notes", "documents"]);
+        assert_eq!(s.cursor, 2);
+        // No wrap at the bottom.
+        assert_eq!(s.handle_key(key(KeyCode::Char('j'))), None);
+        assert_eq!(s.handle_key(shift(KeyCode::Char('J'))), None);
+        assert_eq!(names(&s), ["photos", "notes", "documents"]);
+        assert_eq!(s.handle_key(key(KeyCode::Char('k'))), moved(false));
+        assert_eq!(s.handle_key(shift(KeyCode::Char('K'))), moved(false));
+        assert_eq!(names(&s), ["documents", "photos", "notes"]);
+        assert_eq!(s.cursor, 0);
+        // Not past the top, onto the several-jobs row.
+        assert_eq!(s.handle_key(key(KeyCode::Char('k'))), None);
+        assert_eq!(s.handle_key(shift(KeyCode::Char('K'))), None);
+        assert_eq!((s.on_several, s.cursor), (false, 0));
+        assert_eq!(names(&s), ["documents", "photos", "notes"]);
+        // The arrows, Shift or not, only move the cursor.
+        s.handle_key(key(KeyCode::Down));
+        s.handle_key(shift(KeyCode::Down));
+        assert_eq!(names(&s), ["documents", "photos", "notes"]);
+        assert_eq!(s.cursor, 2);
+        s.handle_key(shift(KeyCode::Up));
+        assert_eq!(names(&s), ["documents", "photos", "notes"]);
+        assert_eq!(s.cursor, 1);
+    }
+
+    #[test]
+    fn reordering_waits_for_the_filter_to_be_cleared() {
+        let mut s = Screen::new(mockup(), NOW);
+        s.filter = "o".into();
+        s.cursor = 1;
+        assert_eq!(s.handle_key(key(KeyCode::Char('j'))), None);
+        assert_eq!(s.handle_key(key(KeyCode::Char('k'))), None);
+        assert_eq!(s.handle_key(shift(KeyCode::Char('J'))), None);
+        assert_eq!(names(&s), ["documents", "photos", "notes"]);
+        assert_eq!(s.cursor, 1);
+        assert_eq!(
+            s.message,
+            Some(("Clear the filter to reorder.".to_string(), Tone::Dim))
+        );
+        // While it is typed, j, k, J and K are letters of it.
+        s.filter.clear();
+        s.handle_key(key(KeyCode::Char('/')));
+        for c in "jkJK".chars() {
+            s.handle_key(key(KeyCode::Char(c)));
+        }
+        assert_eq!(s.filter, "jkJK");
+        assert_eq!(names(&s), ["documents", "photos", "notes"]);
+    }
+
+    #[test]
+    fn the_keys_line_leaves_out_the_least_needed_keys_when_narrow() {
+        let s = Screen::new(mockup(), NOW);
+        assert_eq!(
+            s.hints(None),
+            "enter run · a add · e edit · d remove · j/k move · / filter · ? keys · q back"
+        );
+        // At 80 columns the move keys stay; `/` goes first.
+        assert_eq!(
+            s.hints(Some(76)),
+            "enter run · a add · e edit · d remove · j/k move · ? keys · q back"
+        );
+        assert_eq!(
+            s.hints(Some(60)),
+            "enter run · a add · e edit · d remove · ? keys · q back"
+        );
+        // Edit stays longer than the destructive remove.
+        assert_eq!(
+            s.hints(Some(50)),
+            "enter run · a add · e edit · ? keys · q back"
+        );
+        assert_eq!(s.hints(Some(30)), "enter run · ? keys · q back");
+        assert_eq!(s.hints(Some(10)), "enter run · q back");
+        snapshot("jobs_50", render(&s, 50));
     }
 
     #[test]

@@ -10,8 +10,8 @@ release notes.
 
 ### Several jobs, one after another
 
-- **Run a job** (and `onefolder run` on its own) ends its list with
-  `Several jobs, one after another…` when there are two jobs or more. It
+- The Jobs list starts with, and `onefolder run` on its own ends its list
+  with, `Several jobs, one after another…` when there are two jobs or more. It
   runs all of them, or the ones you tick on a selection screen (Space
   ticks, `a` all, `n` none, Enter starts); the ticks are remembered for
   next time, and each job shows what the Jobs list would warn about, such
@@ -47,6 +47,21 @@ release notes.
   job. `--resync` and `--folder-deletes` apply to every job of a batch.
 - A closing summary no longer repeats `not confirmed` after a destination
   that was not confirmed.
+
+### One Jobs menu item
+
+- The main menu no longer has **Run a job**: **Jobs**, now the top item,
+  is where jobs are run as well as managed. Its hint combines what the two
+  items said: `3 jobs · last: documents ✓ 2h ago · 1 drive not mounted`.
+- The Jobs list's first row is `Several jobs, one after another…` (two
+  jobs or more, hidden while filtering). The cursor starts on the first
+  job under it, so Enter still runs a job; `g` or `↑` reaches the row.
+- On the Jobs list `j` and `k` (or `J` and `K`) move a job down or up, and
+  only the arrows move the cursor. The
+  new order is saved to the config at once, comments and all, and every
+  list of jobs, `run --all` and the batches follow it.
+- After a run or a batch started from the Jobs list, the list comes back
+  with fresh statuses and the cursor where it was.
 
 ## 0.2.1 - 2026-10-26
 

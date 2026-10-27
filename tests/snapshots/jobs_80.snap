@@ -1,9 +1,12 @@
 ---
 source: src/ui/jobs.rs
+assertion_line: 1343
 expression: value
 ---
 "                                                                                "
 "  Jobs  3 jobs · 4 destinations                                                 "
+"                                                                                "
+"    Several jobs, one after another…                                            "
 "                                                                                "
 "  ➤ documents      ~/Documents                                                  "
 "        → work:Backups/Documents          two-way   ✓ 2h ago                    "
@@ -14,7 +17,5 @@ expression: value
 "        → work:Notes                      two-way   ✗ failed 3d ago · 2 held    "
 "                                                                                "
 "                                                                                "
-"                                                                                "
-"                                                                                "
-"  enter run · a add · e edit · d remove · / filter · ? keys · q back            "
+"  enter run · a add · e edit · d remove · j/k move · ? keys · q back            "
 "                                                                                "

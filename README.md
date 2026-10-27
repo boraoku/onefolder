@@ -194,7 +194,7 @@ In the form, the folder fields (the source, a local destination's folder and a O
 
 When a local destination is on an external drive, OneFolder records the drive's identity (mount point, name and UUID) at this point. See [External drives](#external-drives).
 
-On a terminal, `onefolder jobs` opens the jobs list (`a` add, `e` edit, `d` remove, Enter runs, `/` filters, `?` shows the keys). `jobs list` prints it instead, with `· hidden files copied` after the source of a job that copies them (`jobs list --json` has `copy_hidden` for every job). `onefolder jobs edit documents` opens the form again; `jobs edit --help` lists the flags for editing from scripts.
+On a terminal, `onefolder jobs` (or **Jobs** in the menu) opens the jobs list (`a` add, `e` edit, `d` remove, Enter runs, `/` filters, `?` shows the keys). On this list `↑`/`↓` move the cursor, and `j` and `k` move the highlighted job down or up the list (Shift+`j`/`k` too); the new order is saved to the config straight away, comments and all, and every list of jobs and every batch follows it. Reordering waits until a filter is cleared. After a run started from the list, the list comes back with fresh statuses and the cursor where it was. `jobs list` prints it instead, with `· hidden files copied` after the source of a job that copies them (`jobs list --json` has `copy_hidden` for every job). `onefolder jobs edit documents` opens the form again; `jobs edit --help` lists the flags for editing from scripts.
 
 ### Run
 
@@ -240,7 +240,7 @@ onefolder run documents --dest d-7f3a   # run one destination only (ids are in j
 
 #### Several jobs, one after another
 
-With two jobs or more, the last row of the `Run which job?` list (from **Run a job** in the menu, or `onefolder run` on its own) is `Several jobs, one after another…`. It asks whether to run all of them or to choose:
+With two jobs or more, the jobs list starts with a row `Several jobs, one after another…` above the jobs (the cursor starts on the first job under it; `g` or `↑` reaches it, and it is hidden while you filter), and the `Run which job?` list of `onefolder run` on its own ends with the same row. It asks whether to run all of them or to choose:
 
 ```text
   Choose jobs
@@ -257,7 +257,7 @@ With two jobs or more, the last row of the `Run which job?` list (from **Run a j
 
 Space ticks and unticks, `a` ticks all, `n` none, and Enter starts once at least one is ticked. The ticks start as you left them last time (a job added since starts ticked). After each job comes what the jobs list would warn about, such as an unplugged drive, so a job that will fail its checks is visible before you start; it is not unticked for you.
 
-The jobs run in the order of your config, whatever order you ticked or named them in, each exactly as a run of it alone would, and the next one starts when the one before has finished. A job that fails its checks (an unplugged drive, an account that does not answer) is recorded with the reason and the next job starts; a job whose last run is still going elsewhere is skipped (`another run in progress`); only Ctrl-C stops the batch, and the jobs not yet started are recorded as `not run, the batch was stopped`. Every screen carries a dim line at the top saying where the batch is:
+The jobs run in the order of the jobs list (which is the order of your config), whatever order you ticked or named them in, each exactly as a run of it alone would, and the next one starts when the one before has finished. A job that fails its checks (an unplugged drive, an account that does not answer) is recorded with the reason and the next job starts; a job whose last run is still going elsewhere is skipped (`another run in progress`); only Ctrl-C stops the batch, and the jobs not yet started are recorded as `not run, the batch was stopped`. Every screen carries a dim line at the top saying where the batch is:
 
 ```text
 Several jobs · job 2 of 3 · documents ✓ · records · photos next
@@ -285,17 +285,16 @@ OneFolder
 
 ⚙ rclone 1.75.2 · 2 accounts · 3 jobs · last run 2h ago
 
-  Run a job    last: documents ✓ 2h ago
-➤ Jobs         3 jobs · 4 destinations · 1 drive not mounted
-  Accounts     2 accounts · all in rclone's config
-  Status       needs a look: notes
-  Doctor       checks rclone, accounts and drives · 48 logs, 12.4 MB · 3 to prune
+➤ Jobs        3 jobs · last: documents ✓ 2h ago · 1 drive not mounted
+  Accounts    2 accounts · all in rclone's config
+  Status      needs a look: notes
+  Doctor      checks rclone, accounts and drives · 48 logs, 12.4 MB…
   Quit
 
 ↑↓ j/k move · enter select · ? keys · q quit
 ```
 
-On a narrower terminal the hints are shortened with `…`. Arrows or `j`/`k` move, `g`/`G` go to the first or last item, and Enter runs the selected item. The whole session stays full screen, from the menu to the run screen and back, so your shell's earlier output never shows in between: an item's output (a run's summary, Status, Doctor, an account's sign-in) appears on its own screen, where `↑`/`↓`, `j`/`k`, `pgup`/`pgdn` and `g`/`G` scroll and any other key comes back to the menu; the jobs and accounts lists come back to it with `q`. When you quit, the summary of every run of the session is printed to the terminal, so the results and their `Log:` paths stay in your scrollback. `?` shows the keys, `/` filters the jobs list and the accounts list (type to filter, Enter keeps the filter, Esc clears it), and `q` or Esc quits. Ctrl-C quits OneFolder from any screen (exit code 130), except the run screen, where the first Ctrl-C stops the run. The hints say how many jobs and accounts there are, whether a drive is unplugged or a remote is missing from rclone's config, which jobs need a look, and how many logs there are; none of it needs the network.
+**Jobs** is where jobs are run as well as managed: Enter on a job runs it, and the `Several jobs, one after another…` row at the top runs a batch. On a narrower terminal the hints are shortened with `…` (the Jobs hint drops the last run first, then the drive warning, and keeps the count). Arrows or `j`/`k` move, `g`/`G` go to the first or last item, and Enter opens the selected item. The whole session stays full screen, from the menu to the run screen and back, so your shell's earlier output never shows in between: an item's output (a run's summary, Status, Doctor, an account's sign-in) appears on its own screen, where `↑`/`↓`, `j`/`k`, `pgup`/`pgdn` and `g`/`G` scroll and any other key comes back to the menu; the jobs and accounts lists come back to it with `q`. When you quit, the summary of every run of the session is printed to the terminal, so the results and their `Log:` paths stay in your scrollback. `?` shows the keys, `/` filters the jobs list and the accounts list (type to filter, Enter keeps the filter, Esc clears it), and `q` or Esc quits. Ctrl-C quits OneFolder from any screen (exit code 130), except the run screen, where the first Ctrl-C stops the run. The hints say how many jobs and accounts there are, whether a drive is unplugged or a remote is missing from rclone's config, which jobs need a look, and how many logs there are; none of it needs the network.
 
 </details>
 

@@ -1,0 +1,21 @@
+---
+source: src/ui/jobs.rs
+assertion_line: 1351
+expression: value
+---
+"                                                                                "
+"  Jobs  3 jobs · 4 destinations · /o▏                                           "
+"                                                                                "
+"  ➤ documents      ~/Documents                                                  "
+"        → work:Backups/Documents          two-way   ✓ 2h ago                    "
+"        → /Volumes/Backup/Documents       one-way   ◎ not mounted               "
+"    photos         ~/Pictures/Photos                                            "
+"        → personal:Photos                 one-way   ✓ yesterday                 "
+"    notes          ~/Notes                                                      "
+"        → work:Notes                      two-way   ✗ failed 3d ago · 2 held    "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"                                                                                "
+"  type to filter · enter keep · esc clear                                       "
+"                                                                                "

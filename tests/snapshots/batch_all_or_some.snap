@@ -1,10 +1,11 @@
 ---
 source: src/ui/batch.rs
+assertion_line: 608
 expression: value
 ---
   Run several jobs
 
-  4 jobs, run one after another in the order of your config.
+  4 jobs, run one after another in the order of the Jobs list.
 
   ➤ All 4 jobs   
     Choose jobs…

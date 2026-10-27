@@ -523,6 +523,18 @@ pub async fn pick_job(paths: &Paths, config: &Config) -> Result<Option<Chosen>> 
         .context("the job picker stopped unexpectedly")?
 }
 
+/// Asks, on the terminal, whether to run all the jobs or a choice of them
+/// (ticked as last time), as the picker's `Several jobs, one after
+/// another…` row does. Used by that row of the Jobs list. `None` when the
+/// user goes back.
+pub async fn pick_several(paths: &Paths, config: &Config) -> Result<Option<Chosen>> {
+    let paths = paths.clone();
+    let config = config.clone();
+    tokio::task::spawn_blocking(move || several(&paths, &config, &mut OnTerminal, &mut None))
+        .await
+        .context("the job picker stopped unexpectedly")?
+}
+
 /// Where the job picker's lists are shown: the terminal, or a script in
 /// tests.
 trait Lists {
@@ -572,54 +584,91 @@ fn choose(paths: &Paths, config: &Config, lists: &mut dyn Lists) -> Result<Optio
             return Ok(Some(Chosen::Job(name.clone())));
         }
         picker.cursor = i;
-        let mut at = 0;
-        loop {
-            let mut all = batch::all_or_some(names.len());
-            all.cursor = at;
-            match lists.pick(all)? {
-                None => break,
-                Some(0) => return Ok(Some(Chosen::Several(names.clone()))),
-                Some(_) => at = 1,
-            }
-            let state = State::load(&paths.state_file()).unwrap_or_default();
-            let choices = choices.get_or_insert_with(|| {
-                crate::cli::jobs::job_views(&config.jobs, &state)
-                    .iter()
-                    .map(|v| JobChoice {
-                        name: v.name.clone(),
-                        source: v.source.clone(),
-                        destinations: v.destinations.len(),
-                        note: crate::ui::jobs::warning(v),
-                    })
-                    .collect()
-            });
-            let chooser = ChooseJobs::new(choices.clone(), &state.batch_unticked);
-            let Some(chosen) = lists.choose(chooser)? else {
-                continue;
-            };
-            let unticked: Vec<String> = names
-                .iter()
-                .filter(|n| !chosen.contains(n))
-                .cloned()
-                .collect();
-            // Remembered for next time; a state file that cannot be
-            // written only loses the ticks.
-            let _ = State::update(paths, |s| s.batch_unticked = unticked);
-            return Ok(Some(match <[String; 1]>::try_from(chosen) {
-                Ok([one]) => Chosen::Job(one),
-                Err(several) => Chosen::Several(several),
-            }));
+        if let Some(chosen) = several(paths, config, lists, &mut choices)? {
+            return Ok(Some(chosen));
         }
     }
 }
 
-/// Runs a job, or asks which one on a terminal. Used by `onefolder run`,
-/// the menu's Run item and Enter in the jobs list.
+/// All or some, then for some the selection screen; Esc on the selection
+/// goes back to all or some, and on all or some gives `None`. `choices`
+/// keeps the selection's rows between visits. The ticks are saved when
+/// the selection starts, never on the way back.
+fn several(
+    paths: &Paths,
+    config: &Config,
+    lists: &mut dyn Lists,
+    choices: &mut Option<Vec<JobChoice>>,
+) -> Result<Option<Chosen>> {
+    let names: Vec<String> = config.jobs.iter().map(|j| j.name.clone()).collect();
+    let mut at = 0;
+    loop {
+        let mut all = batch::all_or_some(names.len());
+        all.cursor = at;
+        match lists.pick(all)? {
+            None => return Ok(None),
+            Some(0) => return Ok(Some(Chosen::Several(names))),
+            Some(_) => at = 1,
+        }
+        let state = State::load(&paths.state_file()).unwrap_or_default();
+        let choices = choices.get_or_insert_with(|| {
+            crate::cli::jobs::job_views(&config.jobs, &state)
+                .iter()
+                .map(|v| JobChoice {
+                    name: v.name.clone(),
+                    source: v.source.clone(),
+                    destinations: v.destinations.len(),
+                    note: crate::ui::jobs::warning(v),
+                })
+                .collect()
+        });
+        let chooser = ChooseJobs::new(choices.clone(), &state.batch_unticked);
+        let Some(chosen) = lists.choose(chooser)? else {
+            continue;
+        };
+        let unticked: Vec<String> = names
+            .iter()
+            .filter(|n| !chosen.contains(n))
+            .cloned()
+            .collect();
+        // Remembered for next time; a state file that cannot be
+        // written only loses the ticks.
+        let _ = State::update(paths, |s| s.batch_unticked = unticked);
+        return Ok(Some(match <[String; 1]>::try_from(chosen) {
+            Ok([one]) => Chosen::Job(one),
+            Err(several) => Chosen::Several(several),
+        }));
+    }
+}
+
+/// How a run ended, for the line the Jobs list shows after it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunEnd {
+    /// Refused or cancelled before any job's turn; the reason was printed.
+    NotRun,
+    /// Each job in turn (one for a single run): how it ended and what
+    /// each of its destinations came to.
+    Ran(Vec<(JobEnd, Vec<DestResult>)>),
+}
+
+/// Runs a job, or asks which one on a terminal. Used by `onefolder run`.
 pub async fn run_job(
     paths: &Paths,
     rclone: &Rclone,
     job: Option<&str>,
     opts: &Options,
+) -> Result<ExitCode> {
+    run_job_ended(paths, rclone, job, opts, &mut RunEnd::NotRun).await
+}
+
+/// [`run_job`], also saying in `ended` how the run ended (left as
+/// [`RunEnd::NotRun`] when it was refused). Used by Enter in the Jobs list.
+pub async fn run_job_ended(
+    paths: &Paths,
+    rclone: &Rclone,
+    job: Option<&str>,
+    opts: &Options,
+    ended: &mut RunEnd,
 ) -> Result<ExitCode> {
     let interactive = !opts.json && interactive_terminal();
     let shown = job.unwrap_or("");
@@ -642,7 +691,7 @@ pub async fn run_job(
             None if interactive => match pick_job(paths, config).await? {
                 Some(Chosen::Job(name)) => name,
                 Some(Chosen::Several(names)) => {
-                    return run_batch(paths, rclone, Some(names), opts).await
+                    return run_batch_ended(paths, rclone, Some(names), opts, ended).await
                 }
                 None => return Ok(ExitCode::SUCCESS),
             },
@@ -768,11 +817,13 @@ pub async fn run_job(
         &mut yes_rest,
     )
     .await;
+    let stopped = interrupts.interrupted();
     drop(interrupts);
 
     let outcomes: Vec<DestResult> = results.iter().map(|r| r.result).collect();
     let exit = exit_code(&outcomes);
     output.finish(&name, opts.dry_run, exit, &results)?;
+    *ended = RunEnd::Ran(vec![(job_end(exit, stopped), outcomes)]);
     Ok(ExitCode::from(exit))
 }
 
@@ -864,6 +915,18 @@ pub async fn run_batch(
     rclone: &Rclone,
     wanted: Option<Vec<String>>,
     opts: &Options,
+) -> Result<ExitCode> {
+    run_batch_ended(paths, rclone, wanted, opts, &mut RunEnd::NotRun).await
+}
+
+/// [`run_batch`], also saying in `ended` how each job ended (left as
+/// [`RunEnd::NotRun`] when the batch was refused).
+pub async fn run_batch_ended(
+    paths: &Paths,
+    rclone: &Rclone,
+    wanted: Option<Vec<String>>,
+    opts: &Options,
+    ended: &mut RunEnd,
 ) -> Result<ExitCode> {
     let clock = Instant::now();
     let interactive = !opts.json && interactive_terminal();
@@ -1044,6 +1107,11 @@ pub async fn run_batch(
     let exit = batch_exit_code(&done);
     let elapsed = u64::try_from(clock.elapsed().as_millis()).unwrap_or(u64::MAX);
     output.finish_batch(opts.dry_run, exit, &done, elapsed)?;
+    *ended = RunEnd::Ran(
+        done.iter()
+            .map(|j| (j.end.clone(), j.results.iter().map(|r| r.result).collect()))
+            .collect(),
+    );
     Ok(ExitCode::from(exit))
 }
 
@@ -1301,6 +1369,51 @@ mod tests {
             .unwrap()
             .config;
         (dir, paths, config)
+    }
+
+    /// The Jobs list's `Several jobs, one after another…` row starts at
+    /// all or some: Esc there goes back to the list (`None`).
+    #[test]
+    fn the_jobs_lists_several_row_starts_at_all_or_some() {
+        use Step::*;
+        let (_dir, paths, config) = three_jobs();
+        let mut lists = Scripted {
+            steps: vec![Pick(None)],
+            seen: vec![],
+        };
+        assert_eq!(
+            several(&paths, &config, &mut lists, &mut None).unwrap(),
+            None
+        );
+        let mut lists = Scripted {
+            steps: vec![Pick(Some(0))],
+            seen: vec![],
+        };
+        assert_eq!(
+            several(&paths, &config, &mut lists, &mut None).unwrap(),
+            Some(Chosen::Several(vec![
+                "documents".into(),
+                "records".into(),
+                "photos".into()
+            ]))
+        );
+        // Choose, Esc back to all or some, then Esc out.
+        let mut lists = Scripted {
+            steps: vec![Pick(Some(1)), Tick(None), Pick(None)],
+            seen: vec![],
+        };
+        assert_eq!(
+            several(&paths, &config, &mut lists, &mut None).unwrap(),
+            None
+        );
+        let mut lists = Scripted {
+            steps: vec![Pick(Some(1)), Tick(Some(vec!["records", "photos"]))],
+            seen: vec![],
+        };
+        assert_eq!(
+            several(&paths, &config, &mut lists, &mut None).unwrap(),
+            Some(Chosen::Several(vec!["records".into(), "photos".into()]))
+        );
     }
 
     #[test]
