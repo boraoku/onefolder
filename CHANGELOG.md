@@ -6,7 +6,7 @@ versioning; the release workflow publishes a version when its tag (such as
 the Unreleased section to `## <version> - <date>`, which dist uses as the
 release notes.
 
-## Unreleased
+## 0.3.1 - 2026-10-28
 
 ### Job form
 
