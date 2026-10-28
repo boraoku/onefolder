@@ -54,7 +54,7 @@ src/
 ├── ui/                  everything the user sees; the only layer using ratatui and crossterm
 │   ├── mod.rs           terminal width, display-width helpers, fitting lines to the width, quoting, out/err/pause, restoring the terminal
 │   ├── theme.rs         glyphs, colours, rules and borders
-│   ├── form.rs          the in-house form component (text, path, picker, toggle, list, rows, buttons); folder fields complete and browse
+│   ├── form.rs          the in-house form component (text, path, picker, toggle, list, rows, buttons; j/k reorder a list or the rows); folder fields complete and browse
 │   ├── complete.rs      Tab completion of folder names: split, match, cycle, one local read_dir
 │   ├── browse/          the folder browser opened from a folder field
 │   │   ├── mod.rs       Browser state (folder, rows, sizes, filter, hidden toggle), keys, drawing; Update and the Source trait

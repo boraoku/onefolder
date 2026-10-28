@@ -286,7 +286,7 @@ impl JobForm {
                 job.destinations.iter().map(destination_row).collect(),
                 "add a destination",
             )
-            .with_help("enter to open the list, then a add, d remove, J/K reorder"),
+            .with_help("enter to open the list, then a add, d remove, j/k reorder"),
             Field::button(
                 "save",
                 if adding { "Add job" } else { "Save job" },
@@ -1384,10 +1384,10 @@ mod tests {
         d.edit("name", "docs");
         d.focus("dests");
         d.press(KeyCode::Enter);
-        d.press(KeyCode::Char('J'));
+        d.press(KeyCode::Char('j'));
         assert_eq!(d.form.destinations()[0].id(), "d-91c0");
         // Edit the local one without changing its path: no new capture.
-        d.press(KeyCode::Char('k'));
+        d.press(KeyCode::Up);
         d.press(KeyCode::Enter);
         assert!(d.form.sub.is_some());
         d.focus("mode");

@@ -151,7 +151,7 @@ On a terminal, `onefolder accounts` opens the accounts list (Enter tests, `a` ad
 
 ### Jobs
 
-On a terminal, `onefolder jobs add` opens a form for the name, the source folder, exclude patterns, whether to copy hidden files, and the destinations. The same job can be made from flags:
+On a terminal, `onefolder jobs add` opens a form for the name, the source folder, exclude patterns, whether to copy hidden files, and the destinations. In the form's lists (the excludes and the destinations), as on the jobs list, `↑`/`↓` move the cursor and `j`/`k` move the highlighted item down or up; while you type an item, `j` and `k` are just letters. The same job can be made from flags:
 
 ```bash
 onefolder jobs add documents \

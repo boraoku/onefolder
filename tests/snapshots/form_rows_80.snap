@@ -1,5 +1,6 @@
 ---
 source: src/ui/form.rs
+assertion_line: 2088
 expression: value
 ---
 "                                                                                "
@@ -24,5 +25,5 @@ expression: value
 "                                                                                "
 "                                                                                "
 "                                                                                "
-"  ↑↓ move · enter edit · a add · d remove · J/K reorder · esc done              "
+"  ↑↓ move · enter edit · a add · d remove · j/k reorder · esc done              "
 "                                                                                "

@@ -7,7 +7,10 @@
 //! edits a text field, opens a picker, a list or the rows, or presses a
 //! button; ←→ and h/l change a picker or toggle in place; Ctrl-S submits;
 //! Esc cancels (asking for a second Esc when something changed).
-//! Inside an edit, Enter confirms and Esc undoes.
+//! Inside an edit, Enter confirms and Esc undoes. Inside a list or the
+//! rows, as on the Jobs screen, ↑↓ move the cursor and j/k move the
+//! highlighted item down or up (J/K too, as Shift+j/k arrive); while an
+//! item's text is edited they are letters like any other.
 //!
 //! Folder fields (every path field, and a text field marked with
 //! [`Field::with_folder`]) also complete: while editing, Tab completes the
@@ -933,18 +936,15 @@ impl Form {
             return FormEvent::None;
         };
         let len = items.len();
-        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
-            KeyCode::Up if shift => return self.move_list_item(cursor, -1),
-            KeyCode::Down if shift => return self.move_list_item(cursor, 1),
-            KeyCode::Char('K') => return self.move_list_item(cursor, -1),
-            KeyCode::Char('J') => return self.move_list_item(cursor, 1),
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Char('k') | KeyCode::Char('K') => return self.move_list_item(cursor, -1),
+            KeyCode::Char('j') | KeyCode::Char('J') => return self.move_list_item(cursor, 1),
+            KeyCode::Up => {
                 self.state = State::List {
                     cursor: cursor.saturating_sub(1),
                 }
             }
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Down => {
                 self.state = State::List {
                     cursor: (cursor + 1).min(len),
                 }
@@ -1078,20 +1078,23 @@ impl Form {
                 return FormEvent::None;
             }
         };
-        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let row = |action| FormEvent::Row(fkey, action);
         match key.code {
-            KeyCode::Up if shift && cursor > 0 && cursor < len => row(RowAction::MoveUp(cursor)),
-            KeyCode::Down if shift && cursor + 1 < len => row(RowAction::MoveDown(cursor)),
-            KeyCode::Char('K') if cursor > 0 && cursor < len => row(RowAction::MoveUp(cursor)),
-            KeyCode::Char('J') if cursor + 1 < len => row(RowAction::MoveDown(cursor)),
-            KeyCode::Up | KeyCode::Char('k') => {
+            KeyCode::Char('k') | KeyCode::Char('K') if cursor > 0 && cursor < len => {
+                row(RowAction::MoveUp(cursor))
+            }
+            KeyCode::Char('j') | KeyCode::Char('J') if cursor + 1 < len => {
+                row(RowAction::MoveDown(cursor))
+            }
+            // At either end (or on the add row) j and k do nothing.
+            KeyCode::Char('j' | 'k' | 'J' | 'K') => FormEvent::None,
+            KeyCode::Up => {
                 self.state = State::Rows {
                     cursor: cursor.saturating_sub(1),
                 };
                 FormEvent::None
             }
-            KeyCode::Down | KeyCode::Char('j') => {
+            KeyCode::Down => {
                 self.state = State::Rows {
                     cursor: (cursor + 1).min(len),
                 };
@@ -1159,13 +1162,13 @@ impl Form {
             State::EditText { .. } => format!("enter done {d} esc undo {d} tab next"),
             State::Picking { .. } => format!("←→ choose {d} enter done {d} esc undo"),
             State::List { .. } => format!(
-                "{}{} move {d} enter edit {d} a add {d} d delete {d} J/K reorder {d} esc done",
+                "{}{} move {d} enter edit {d} a add {d} d delete {d} j/k reorder {d} esc done",
                 theme::UP,
                 theme::DOWN
             ),
             State::ListEdit { .. } => format!("enter done {d} esc undo"),
             State::Rows { .. } => format!(
-                "{}{} move {d} enter edit {d} a add {d} d remove {d} J/K reorder {d} esc done",
+                "{}{} move {d} enter edit {d} a add {d} d remove {d} j/k reorder {d} esc done",
                 theme::UP,
                 theme::DOWN
             ),
@@ -1765,14 +1768,14 @@ mod tests {
         );
         // Edit the first: Up to the top, Enter, change it.
         for _ in 0..5 {
-            f.handle_key(key(KeyCode::Char('k')));
+            f.handle_key(key(KeyCode::Up));
         }
         f.handle_key(key(KeyCode::Enter));
         typed(&mut f, "x");
         f.handle_key(key(KeyCode::Enter));
         assert_eq!(f.items("excludes")[0], ".DS_Storex");
         // Reorder and delete.
-        f.handle_key(key(KeyCode::Char('J')));
+        f.handle_key(key(KeyCode::Char('j')));
         assert_eq!(f.items("excludes")[1], ".DS_Storex");
         f.handle_key(key(KeyCode::Char('d')));
         assert_eq!(f.items("excludes"), vec!["node_modules/**", "*.tmp"]);
@@ -1784,6 +1787,62 @@ mod tests {
         f.handle_key(key(KeyCode::Esc));
         assert!(!f.is_editing());
         assert_eq!(f.focused_key(), Some("excludes"));
+    }
+
+    #[test]
+    fn j_and_k_reorder_a_list_and_type_in_its_items() {
+        let shift = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::SHIFT);
+        let mut f = sample();
+        f.focus("excludes");
+        f.handle_key(key(KeyCode::Enter)); // into the list, on the first item
+        assert_eq!(f.items("excludes"), vec![".DS_Store", "node_modules/**"]);
+        assert_eq!(
+            f.handle_key(key(KeyCode::Char('j'))),
+            FormEvent::Changed("excludes")
+        );
+        assert_eq!(f.items("excludes"), vec!["node_modules/**", ".DS_Store"]);
+        // The cursor went with it: at the bottom j does nothing.
+        assert_eq!(f.handle_key(key(KeyCode::Char('j'))), FormEvent::None);
+        assert_eq!(f.handle_key(shift('J')), FormEvent::None);
+        assert_eq!(
+            f.handle_key(key(KeyCode::Char('k'))),
+            FormEvent::Changed("excludes")
+        );
+        assert_eq!(f.items("excludes"), vec![".DS_Store", "node_modules/**"]);
+        assert_eq!(f.handle_key(key(KeyCode::Char('k'))), FormEvent::None);
+        // Shift+j arrives as J and does the same.
+        assert_eq!(f.handle_key(shift('J')), FormEvent::Changed("excludes"));
+        assert_eq!(f.handle_key(shift('K')), FormEvent::Changed("excludes"));
+        assert_eq!(f.items("excludes"), vec![".DS_Store", "node_modules/**"]);
+        // The arrows, Shift or not, only move the cursor.
+        f.handle_key(KeyEvent::new(KeyCode::Down, KeyModifiers::SHIFT));
+        f.handle_key(key(KeyCode::Up));
+        f.handle_key(key(KeyCode::Down));
+        assert_eq!(f.items("excludes"), vec![".DS_Store", "node_modules/**"]);
+        // On the second item: Enter edits it, and j, k, J, K are letters.
+        f.handle_key(key(KeyCode::Enter));
+        for c in ['j', 'k', 'J', 'K'] {
+            f.handle_key(key(KeyCode::Char(c)));
+        }
+        f.handle_key(key(KeyCode::Enter));
+        assert_eq!(
+            f.items("excludes"),
+            vec![".DS_Store", "node_modules/**jkJK"]
+        );
+        // And in a new item.
+        f.handle_key(key(KeyCode::Char('a')));
+        typed(&mut f, "jk/KJ");
+        f.handle_key(key(KeyCode::Enter));
+        assert_eq!(f.items("excludes")[2], "jk/KJ");
+        // A text field outside the list keeps them too.
+        f.handle_key(key(KeyCode::Esc));
+        f.focus("name");
+        f.handle_key(key(KeyCode::Enter));
+        for c in ['j', 'k', 'J', 'K'] {
+            f.handle_key(key(KeyCode::Char(c)));
+        }
+        f.handle_key(key(KeyCode::Enter));
+        assert!(f.text("name").ends_with("jkJK"), "{}", f.text("name"));
     }
 
     #[test]
@@ -1800,18 +1859,33 @@ mod tests {
             FormEvent::Row("dests", RowAction::Edit(0))
         );
         assert_eq!(
-            f.handle_key(key(KeyCode::Char('J'))),
+            f.handle_key(key(KeyCode::Char('j'))),
             FormEvent::Row("dests", RowAction::MoveDown(0))
         );
         assert_eq!(
-            f.handle_key(key(KeyCode::Char('K'))),
+            f.handle_key(KeyEvent::new(KeyCode::Char('J'), KeyModifiers::SHIFT)),
+            FormEvent::Row("dests", RowAction::MoveDown(0)),
+            "J too"
+        );
+        assert_eq!(
+            f.handle_key(key(KeyCode::Char('k'))),
             FormEvent::None,
             "already first"
         );
         f.handle_key(key(KeyCode::Down));
         assert_eq!(
-            f.handle_key(key(KeyCode::Char('K'))),
+            f.handle_key(key(KeyCode::Char('k'))),
             FormEvent::Row("dests", RowAction::MoveUp(1))
+        );
+        assert_eq!(
+            f.handle_key(KeyEvent::new(KeyCode::Char('K'), KeyModifiers::SHIFT)),
+            FormEvent::Row("dests", RowAction::MoveUp(1)),
+            "K too"
+        );
+        assert_eq!(
+            f.handle_key(key(KeyCode::Char('j'))),
+            FormEvent::None,
+            "last"
         );
         assert_eq!(
             f.handle_key(key(KeyCode::Char('x'))),

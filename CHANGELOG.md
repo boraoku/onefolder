@@ -6,6 +6,15 @@ versioning; the release workflow publishes a version when its tag (such as
 the Unreleased section to `## <version> - <date>`, which dist uses as the
 release notes.
 
+## Unreleased
+
+### Job form
+
+- The job form's lists (the excludes and the destinations) reorder as the
+  Jobs list does: `j` moves the highlighted item down and `k` up (`J` and
+  `K` still work), and only the arrows move the cursor. While an item or
+  any other text is being typed, `j` and `k` are letters as before.
+
 ## 0.3.0 - 2026-10-27
 
 ### Several jobs, one after another
