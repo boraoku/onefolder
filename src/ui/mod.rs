@@ -9,6 +9,7 @@ pub mod form;
 pub mod jobform;
 pub mod jobs;
 pub mod menu;
+pub mod partial;
 pub mod plain;
 pub mod progress;
 pub mod prompt;

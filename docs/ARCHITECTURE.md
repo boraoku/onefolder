@@ -13,7 +13,7 @@ src/
 │   ├── mod.rs           the Cli and Command enums, global --json/--dry-run, the no-args menu, version
 │   ├── accounts.rs      accounts list / add / remove / test / reconnect
 │   ├── jobs.rs          jobs list / add / edit / remove / release, from the form or from flags
-│   ├── run.rs           run [job…] --all --dest --yes --folder-deletes --resync --moves; the job picker, the batch runner, output choice and exit codes
+│   ├── run.rs           run [job…] --all --dest… --yes --folder-deletes --resync --moves; the job picker (p: some destinations), the batch runner, partial runs, output choice and exit codes
 │   ├── status.rs        status [job]: last runs, holds, drives and remotes, no network calls
 │   ├── doctor.rs        doctor: rclone, config, accounts, jobs, drives, data files; --prune-logs
 │   └── completion.rs    completion bash|zsh|fish through clap_complete
@@ -23,7 +23,7 @@ src/
 │   ├── sync.rs          writes the typed Config back into the toml_edit document, matched by identity
 │   └── tests.rs         config unit tests over tests/fixtures/config
 ├── state/
-│   ├── mod.rs           state.json: runs, last_dry_run, holds, bisync, batch_unticked; state.lock; atomic writes
+│   ├── mod.rs           state.json: runs, last_dry_run, holds, bisync, batch_unticked, partial_unticked; state.lock; atomic writes
 │   ├── lock.rs          the per-job run lock runs/<job>.lock, and inspect() for status and doctor
 │   └── prune.rs         run log pruning, only for doctor --prune-logs (never automatic)
 ├── model/
@@ -65,7 +65,8 @@ src/
 │   ├── menu.rs          the main menu shown by `onefolder` with no arguments, and the `?` keys overlay
 │   ├── accounts.rs      accounts list (printed and interactive, with `/` filter), test results, prompts, the inline Picker
 │   ├── batch.rs         several jobs: all or some, the selection screen, the batch line, the closing summary
-│   ├── jobs.rs          the jobs list, printed and interactive (with `/` filter, j/k reorder, the several-jobs row)
+│   ├── partial.rs       some of a job's destinations: the Choose destinations checklist, the job picker that tells p from Enter
+│   ├── jobs.rs          the jobs list, printed and interactive (with `/` filter, j/k reorder, p partial, the several-jobs row)
 │   ├── status.rs        the text of `onefolder status`
 │   ├── progress.rs      the run screen and TuiReporter
 │   ├── prompt.rs        one-way preview, two-way plan, merge offer, questions, folder prompt, whole-list view

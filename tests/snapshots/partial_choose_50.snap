@@ -1,0 +1,13 @@
+---
+source: src/ui/partial.rs
+expression: value
+---
+  Choose destinations for records   ~/Records
+
+    [x] boramektup:Records   one-way   ✓ 2h ago
+  ➤ [ ] …T7 Shield/Records   one-way   ◎ not…
+    [x] work:…hive/Records   two-way   ✗ needs…
+
+  2 of 3 destinations will run, one after another
+
+  ↑↓ move · space tick · a all · n none…

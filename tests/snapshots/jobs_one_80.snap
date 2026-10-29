@@ -1,6 +1,5 @@
 ---
 source: src/ui/jobs.rs
-assertion_line: 1291
 expression: value
 ---
 "                                                                                "
@@ -17,5 +16,5 @@ expression: value
 "                                                                                "
 "                                                                                "
 "                                                                                "
-"  enter run · a add · e edit · d remove · / filter · ? keys · q back            "
+"  enter run · p partial · a add · e edit · d remove · ? keys · q back           "
 "                                                                                "

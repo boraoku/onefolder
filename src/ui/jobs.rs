@@ -1,8 +1,8 @@
 //! The jobs list: printed by `onefolder jobs list`, and the interactive
 //! screen behind `onefolder jobs` (and the menu's Jobs entry) where
-//! Enter runs a job, a, e and d add, edit and remove, and j and k move a
-//! job down or up the list (and the config); here only the arrows move
-//! the cursor. With two jobs or more its
+//! Enter runs a job (p some of its destinations), a, e and d add, edit
+//! and remove, and j and k move a job down or up the list (and the
+//! config); here only the arrows move the cursor. With two jobs or more its
 //! first row, `Several jobs, one after another…`, runs a batch.
 //!
 //! [`list_lines`] decides the text and tone of every piece, so the printed
@@ -333,6 +333,8 @@ pub enum Action {
     /// Already confirmed on the screen.
     Remove(String),
     Run(String),
+    /// `p` on a job with two destinations or more: choose some of them.
+    Partial(String),
     /// The `Several jobs, one after another…` row.
     Several,
     /// The job was moved one place down (or up) on the screen; the config
@@ -369,10 +371,11 @@ pub struct Screen {
 }
 
 /// The keys of the jobs list, for its `?` overlay.
-pub const KEYS: [(&str, &str); 12] = [
+pub const KEYS: [(&str, &str); 13] = [
     ("↑↓", "move"),
     ("g  G", "first, last"),
     ("enter", "run the job, or several"),
+    ("p", "run some of its destinations"),
     ("a", "add a job"),
     ("e", "edit the job"),
     ("d", "remove the job (asks first)"),
@@ -449,6 +452,17 @@ impl Screen {
             self.cursor = 0;
         }
         self.confirm = None;
+    }
+
+    /// The cursor is on a job with two destinations or more, where `p`
+    /// chooses some of them.
+    fn on_partial(&self) -> bool {
+        !self.on_several
+            && self
+                .visible()
+                .get(self.cursor)
+                .and_then(|i| self.jobs.get(*i))
+                .is_some_and(|j| j.destinations.len() > 1)
     }
 
     /// The job under the cursor, among those shown.
@@ -570,6 +584,11 @@ impl Screen {
             KeyCode::Char('e') => return self.selected().map(Action::Edit),
             KeyCode::Enter if self.on_several => return Some(Action::Several),
             KeyCode::Enter => return self.selected().map(Action::Run),
+            // Nothing to choose on the several-jobs row; on a job with one
+            // destination, as Enter.
+            KeyCode::Char('p') if self.on_several => {}
+            KeyCode::Char('p') if self.on_partial() => return self.selected().map(Action::Partial),
+            KeyCode::Char('p') => return self.selected().map(Action::Run),
             KeyCode::Char('d') | KeyCode::Delete if self.on_several => {
                 self.message = pick_a_job("remove");
             }
@@ -657,16 +676,17 @@ impl Screen {
         let mut keys: Vec<(&str, u8)> = if self.jobs.is_empty() {
             vec![("a add", 1), ("? keys", 2), ("q back", KEEP)]
         } else {
-            let mut keys = vec![
-                ("enter run", KEEP),
-                ("a add", 4),
-                ("e edit", 3),
-                ("d remove", 2),
-            ];
+            let mut keys = vec![("enter run", KEEP)];
+            // `p` stays longer than reordering and remove, so it is
+            // offered at 80 columns.
+            if self.on_partial() {
+                keys.push(("p partial", 3));
+            }
+            keys.extend([("a add", 5), ("e edit", 4), ("d remove", 2)]);
             if self.jobs.len() > 1 && self.filter.is_empty() {
                 keys.push(("j/k move", 1));
             }
-            keys.extend([("/ filter", 0), ("? keys", 5), ("q back", KEEP)]);
+            keys.extend([("/ filter", 0), ("? keys", 6), ("q back", KEEP)]);
             keys
         };
         let text = |keys: &[(&str, u8)]| {
@@ -1246,12 +1266,36 @@ mod tests {
 
     #[test]
     fn the_keys_line_leaves_out_the_least_needed_keys_when_narrow() {
-        let s = Screen::new(mockup(), NOW);
+        let mut s = Screen::new(mockup(), NOW);
+        assert_eq!(
+            s.hints(None),
+            "enter run · p partial · a add · e edit · d remove · j/k move · / filter · ? keys · q back"
+        );
+        // `/` goes first, then the move keys, so `p` stays at 80 columns.
+        assert_eq!(
+            s.hints(Some(86)),
+            "enter run · p partial · a add · e edit · d remove · j/k move · ? keys · q back"
+        );
+        assert_eq!(
+            s.hints(Some(76)),
+            "enter run · p partial · a add · e edit · d remove · ? keys · q back"
+        );
+        assert_eq!(
+            s.hints(Some(60)),
+            "enter run · p partial · a add · e edit · ? keys · q back"
+        );
+        // `p` is offered only on a job with two destinations or more.
+        s.cursor = 1;
         assert_eq!(
             s.hints(None),
             "enter run · a add · e edit · d remove · j/k move · / filter · ? keys · q back"
         );
-        // At 80 columns the move keys stay; `/` goes first.
+        s.cursor = 0;
+        s.on_several = true;
+        assert!(!s.hints(None).contains("p partial"));
+        // On a job with one destination, at 80 columns the move keys stay.
+        s.on_several = false;
+        s.cursor = 1;
         assert_eq!(
             s.hints(Some(76)),
             "enter run · a add · e edit · d remove · j/k move · ? keys · q back"
@@ -1268,6 +1312,39 @@ mod tests {
         assert_eq!(s.hints(Some(30)), "enter run · ? keys · q back");
         assert_eq!(s.hints(Some(10)), "enter run · q back");
         snapshot("jobs_50", render(&s, 50));
+    }
+
+    #[test]
+    fn p_runs_some_of_a_jobs_destinations() {
+        let mut s = Screen::new(mockup(), NOW);
+        // documents has two destinations: choose some of them.
+        assert_eq!(
+            s.handle_key(key(KeyCode::Char('p'))),
+            Some(Action::Partial("documents".into()))
+        );
+        snapshot("jobs_partial_120", render(&s, 120));
+        // photos has one: p runs it as Enter does.
+        s.handle_key(key(KeyCode::Down));
+        assert_eq!(
+            s.handle_key(key(KeyCode::Char('p'))),
+            Some(Action::Run("photos".into()))
+        );
+        // On the several-jobs row it does nothing.
+        s.handle_key(key(KeyCode::Char('g')));
+        assert!(s.on_several);
+        assert_eq!(s.handle_key(key(KeyCode::Char('p'))), None);
+        assert_eq!(s.message, None);
+        // While the filter is typed it is a letter of it.
+        s.handle_key(key(KeyCode::Char('/')));
+        assert_eq!(s.handle_key(key(KeyCode::Char('p'))), None);
+        assert_eq!(s.filter, "p");
+        // Filtered, p goes by the job under the cursor.
+        s.handle_key(key(KeyCode::Enter));
+        assert_eq!(s.visible(), vec![0, 1]);
+        assert_eq!(
+            s.handle_key(key(KeyCode::Char('p'))),
+            Some(Action::Partial("documents".into()))
+        );
     }
 
     #[test]
@@ -1306,7 +1383,14 @@ mod tests {
         let mut s = Screen::new(mockup(), NOW);
         s.handle_key(key(KeyCode::Char('?')));
         assert!(s.help);
-        snapshot("jobs_keys_80", render(&s, 80));
+        // Tall enough for every key.
+        let tall = |width| {
+            let mut terminal = Terminal::new(TestBackend::new(width, 20)).unwrap();
+            terminal.draw(|f| s.render(f)).unwrap();
+            terminal.backend().to_string()
+        };
+        snapshot("jobs_keys_80", tall(80));
+        snapshot("jobs_keys_50", tall(50));
         assert_eq!(
             s.handle_key(key(KeyCode::Char('q'))),
             None,

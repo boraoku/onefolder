@@ -1,4 +1,4 @@
-//! `onefolder run [job…] [--all] [--dest id]`, with `--dry-run`, `--yes`,
+//! `onefolder run [job…] [--all] [--dest id…]`, with `--dry-run`, `--yes`,
 //! `--json`, `--folder-deletes`, `--resync` and `--moves`.
 //!
 //! Runs a job's destinations strictly in config order: one-way destinations
@@ -9,6 +9,15 @@
 //! as failed with the reason and the next one still runs; Ctrl-C stops the
 //! run. After the last destination, a job with more than one prints a
 //! closing summary with one line per destination.
+//!
+//! A partial run runs some of a job's destinations: those named with
+//! `--dest` (repeatable; an unknown id refuses the run before anything
+//! runs), or those ticked on the `Choose destinations` checklist that `p`
+//! opens on the job picker and the Jobs list (ticks remembered per job).
+//! It is the ordinary run restricted to them, in config order; its title
+//! says `partial, 2 of 3 destinations`, and its closing summary, always
+//! shown, keeps the destinations left out in their place as `not chosen`.
+//! They count for nothing in the exit code or in `done`.
 //!
 //! Only one run of a job at a time: `runs/<job>.lock` under the data
 //! directory holds the process id while it runs (see `state::lock`).
@@ -53,8 +62,9 @@ use crate::sync::reporter::{
     DecidedBy, DestinationInfo, FolderAnswer, FolderPolicy, MovesAnswer, MovesPolicy, Reporter,
 };
 use crate::sync::twoway;
-use crate::ui::accounts::{pick, show_inline, Picker};
+use crate::ui::accounts::{pick, show_inline, Picked, Picker};
 use crate::ui::batch::{self, BatchLine, ChooseJobs, JobChoice, JobEnd, JobLine};
+use crate::ui::partial::{self, ChooseDestinations, DestChoice, RunPicker};
 use crate::ui::plain::PlainReporter;
 use crate::ui::progress::TuiReporter;
 use crate::ui::summary::{render_job_summary, DestinationLine};
@@ -94,9 +104,9 @@ pub struct RunArgs {
     /// Run every job, one after another, in config order
     #[arg(long, conflicts_with = "jobs")]
     pub all: bool,
-    /// Run only this destination id (one job only)
+    /// Run only this destination id (one job only); repeat it to run several
     #[arg(long, value_name = "ID")]
-    pub dest: Option<String>,
+    pub dest: Vec<String>,
     /// Skip the preview confirmation (never the folder prompt)
     #[arg(long, short = 'y')]
     pub yes: bool,
@@ -114,7 +124,8 @@ pub struct RunArgs {
 /// How a run was asked for.
 #[derive(Debug, Clone, Default)]
 pub struct Options {
-    pub dest: Option<String>,
+    /// The destination ids to run (`--dest`); empty for every one.
+    pub dest: Vec<String>,
     pub dry_run: bool,
     pub yes: bool,
     pub json: bool,
@@ -271,17 +282,46 @@ fn refuse_batch(json: bool, code: &str, message: &str) -> ExitCode {
     ExitCode::from(2)
 }
 
-/// The job's closing summary, for a job with more than one destination.
-fn job_closing(job: &str, dry_run: bool, results: &[Ran], colour: bool) -> Option<String> {
-    (results.len() > 1).then(|| {
-        render_job_summary(
-            job,
-            dry_run,
-            &destination_lines(results),
-            colour,
-            crate::ui::terminal_width(),
-        )
-    })
+/// The job's closing summary, for a job with more than one destination,
+/// and always for a partial run (`partial`: its lines, every destination
+/// of the job in config order).
+fn job_closing(
+    job: &str,
+    dry_run: bool,
+    results: &[Ran],
+    partial: Option<&[DestinationLine]>,
+    colour: bool,
+) -> Option<String> {
+    let width = crate::ui::terminal_width();
+    match partial {
+        Some(lines) => Some(render_job_summary(job, dry_run, lines, colour, width)),
+        None => (results.len() > 1)
+            .then(|| render_job_summary(job, dry_run, &destination_lines(results), colour, width)),
+    }
+}
+
+/// The closing summary's lines for a partial run: every destination of
+/// the job in config order, those that ran as they ended and the rest as
+/// not chosen, with when they last ran for real (the state file as the
+/// run leaves it, which did not touch them).
+fn partial_lines(job: &Job, results: &[Ran], state: &State, now: i64) -> Vec<DestinationLine> {
+    job.destinations
+        .iter()
+        .map(|d| match results.iter().find(|r| r.id == d.id()) {
+            Some(ran) => destination_lines(std::slice::from_ref(ran)).remove(0),
+            None => DestinationLine {
+                display: d.display(),
+                mode: d.mode(),
+                outcome: partial::NOT_CHOSEN.to_string(),
+                reason: Some(partial::not_chosen_reason(
+                    state
+                        .last_run(&job.name, d.id())
+                        .and_then(|r| crate::ui::jobs::unix_seconds(&r.finished)),
+                    now,
+                )),
+            },
+        })
+        .collect()
 }
 
 fn destination_lines(results: &[Ran]) -> Vec<DestinationLine> {
@@ -324,8 +364,17 @@ impl Output {
         }
     }
 
-    fn finish(self, job: &str, dry_run: bool, exit: u8, results: &[Ran]) -> Result<()> {
-        let closing = job_closing(job, dry_run, results, theme::colour_on_stdout());
+    /// The run is over: its closing summary, or `done`. `partial` holds
+    /// the summary's lines of a partial run.
+    fn finish(
+        self,
+        job: &str,
+        dry_run: bool,
+        exit: u8,
+        results: &[Ran],
+        partial: Option<&[DestinationLine]>,
+    ) -> Result<()> {
+        let closing = job_closing(job, dry_run, results, partial, theme::colour_on_stdout());
         match self {
             Output::Screen(r) => r.finish(closing),
             Output::Plain(mut r) => {
@@ -391,7 +440,7 @@ impl Output {
     /// destination) or its `done` line. `line` is the batch line with this
     /// job's end.
     fn end_job(&mut self, job: &str, dry_run: bool, exit: u8, results: &[Ran], line: &BatchLine) {
-        let closing = || job_closing(job, dry_run, results, theme::colour_on_stdout());
+        let closing = || job_closing(job, dry_run, results, None, theme::colour_on_stdout());
         match self {
             Output::Screen(r) => r.end_job(closing(), line),
             Output::Plain(r) => {
@@ -508,17 +557,22 @@ pub fn batch_exit_code(jobs: &[JobRan]) -> u8 {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chosen {
     Job(String),
+    /// Some of a job's destinations (`p`), by id in config order.
+    Partial(String, Vec<String>),
     /// Several jobs, one after another, in config order.
     Several(Vec<String>),
 }
 
 /// Asks which job to run, with a picker on the terminal. With two jobs or
 /// more its last row, `Several jobs, one after another…`, asks for all of
-/// them or a choice (ticked as last time). `None` when the user cancels.
-pub async fn pick_job(paths: &Paths, config: &Config) -> Result<Option<Chosen>> {
+/// them or a choice (ticked as last time); `p` on a job with two
+/// destinations or more asks which of them (unless `partial` is false, as
+/// when `--dest` already names them: `p` is then Enter). `None` when the
+/// user cancels.
+pub async fn pick_job(paths: &Paths, config: &Config, partial: bool) -> Result<Option<Chosen>> {
     let paths = paths.clone();
     let config = config.clone();
-    tokio::task::spawn_blocking(move || choose(&paths, &config, &mut OnTerminal))
+    tokio::task::spawn_blocking(move || choose(&paths, &config, &mut OnTerminal, partial))
         .await
         .context("the job picker stopped unexpectedly")?
 }
@@ -535,13 +589,33 @@ pub async fn pick_several(paths: &Paths, config: &Config) -> Result<Option<Chose
         .context("the job picker stopped unexpectedly")?
 }
 
+/// Asks, on the terminal, which of a job's destinations to run (ticked as
+/// last time), as `p` on the job picker does. Used by `p` on the Jobs
+/// list. `None` when the user goes back.
+pub async fn pick_destinations(
+    paths: &Paths,
+    config: &Config,
+    job: &str,
+) -> Result<Option<Chosen>> {
+    let paths = paths.clone();
+    let config = config.clone();
+    let job = job.to_string();
+    tokio::task::spawn_blocking(move || destinations(&paths, &config, &job, &mut OnTerminal))
+        .await
+        .context("the job picker stopped unexpectedly")?
+}
+
 /// Where the job picker's lists are shown: the terminal, or a script in
 /// tests.
 trait Lists {
     /// A picker: the row chosen, `None` for Esc.
     fn pick(&mut self, picker: Picker) -> Result<Option<usize>>;
+    /// The job picker, which tells Enter from `p`: `None` for Esc.
+    fn pick_job(&mut self, picker: Picker) -> Result<Option<Picked>>;
     /// The selection screen: the jobs ticked, `None` for Esc.
     fn choose(&mut self, chooser: ChooseJobs) -> Result<Option<Vec<String>>>;
+    /// A job's destinations checklist: the ids ticked, `None` for Esc.
+    fn choose_destinations(&mut self, chooser: ChooseDestinations) -> Result<Option<Vec<String>>>;
 }
 
 /// The lists on the terminal, inline or under the session's page. Ctrl-C
@@ -553,15 +627,27 @@ impl Lists for OnTerminal {
     fn pick(&mut self, picker: Picker) -> Result<Option<usize>> {
         pick(picker)
     }
+    fn pick_job(&mut self, picker: Picker) -> Result<Option<Picked>> {
+        show_inline(RunPicker(picker))
+    }
     fn choose(&mut self, chooser: ChooseJobs) -> Result<Option<Vec<String>>> {
+        show_inline(chooser)
+    }
+    fn choose_destinations(&mut self, chooser: ChooseDestinations) -> Result<Option<Vec<String>>> {
         show_inline(chooser)
     }
 }
 
 /// The picker, then for several jobs all or some, then the selection
-/// screen. Esc on each goes back to the one before. The ticks are saved
-/// when the selection starts, never on the way back.
-fn choose(paths: &Paths, config: &Config, lists: &mut dyn Lists) -> Result<Option<Chosen>> {
+/// screen; for `p` on a job, its destinations checklist. Esc on each goes
+/// back to the one before. The ticks are saved when the selection starts,
+/// never on the way back.
+fn choose(
+    paths: &Paths,
+    config: &Config,
+    lists: &mut dyn Lists,
+    partial: bool,
+) -> Result<Option<Chosen>> {
     let names: Vec<String> = config.jobs.iter().map(|j| j.name.clone()).collect();
     let mut picker = Picker::new(
         "Run which job?",
@@ -575,10 +661,29 @@ fn choose(paths: &Paths, config: &Config, lists: &mut dyn Lists) -> Result<Optio
         picker.extra = Some(batch::SEVERAL.to_string());
         picker.esc = "back";
     }
+    // With nothing marked, `p` is Enter on every job.
+    picker.partial = config
+        .jobs
+        .iter()
+        .map(|j| partial && j.destinations.len() > 1)
+        .collect();
     let mut choices: Option<Vec<JobChoice>> = None;
     loop {
-        let Some(i) = lists.pick(picker.clone())? else {
-            return Ok(None);
+        let i = match lists.pick_job(picker.clone())? {
+            None => return Ok(None),
+            Some(Picked::Partial(i)) => {
+                picker.cursor = i;
+                match names.get(i) {
+                    Some(name) => match destinations(paths, config, name, lists)? {
+                        Some(chosen) => return Ok(Some(chosen)),
+                        // Back from the checklist: the picker again.
+                        None => continue,
+                    },
+                    None => continue,
+                }
+            }
+            Some(Picked::Chosen(i)) => i,
+            Some(Picked::Cancelled) => return Ok(None),
         };
         if let Some(name) = names.get(i) {
             return Ok(Some(Chosen::Job(name.clone())));
@@ -641,6 +746,69 @@ fn several(
     }
 }
 
+/// The checklist of a job's destinations, ticked as last time. Esc gives
+/// `None`. The ticks are saved when the run starts, never on the way
+/// back; every destination ticked is the job's whole run, and so is a job
+/// with fewer than two destinations (the file may have changed since the
+/// list was drawn).
+fn destinations(
+    paths: &Paths,
+    config: &Config,
+    name: &str,
+    lists: &mut dyn Lists,
+) -> Result<Option<Chosen>> {
+    let Some(job) = config.job(name) else {
+        // Refused by the run, as Enter on a job no longer there would be.
+        return Ok(Some(Chosen::Job(name.to_string())));
+    };
+    if job.destinations.len() < 2 {
+        return Ok(Some(Chosen::Job(name.to_string())));
+    }
+    let state = State::load(&paths.state_file()).unwrap_or_default();
+    let view = crate::cli::jobs::job_views(std::slice::from_ref(job), &state).remove(0);
+    let now = crate::cli::jobs::now();
+    let choices: Vec<DestChoice> = job
+        .destinations
+        .iter()
+        .zip(&view.destinations)
+        .map(|(d, v)| DestChoice {
+            id: d.id().to_string(),
+            target: v.target.clone(),
+            mode: v.mode,
+            note: crate::ui::jobs::status(v, now),
+        })
+        .collect();
+    let unticked = state
+        .partial_unticked
+        .get(name)
+        .map_or(&[][..], Vec::as_slice);
+    let chooser = ChooseDestinations::new(name, &view.source, choices, unticked);
+    let Some(chosen) = lists.choose_destinations(chooser)? else {
+        return Ok(None);
+    };
+    let unticked: Vec<String> = job
+        .destinations
+        .iter()
+        .map(|d| d.id().to_string())
+        .filter(|id| !chosen.contains(id))
+        .collect();
+    // Remembered for next time; a state file that cannot be written only
+    // loses the ticks.
+    let _ = State::update(paths, |s| {
+        if unticked.is_empty() {
+            s.partial_unticked.remove(name);
+        } else {
+            s.partial_unticked
+                .insert(name.to_string(), unticked.clone());
+        }
+    });
+    Ok(Some(if unticked.is_empty() {
+        Chosen::Job(name.to_string())
+    } else {
+        Chosen::Partial(name.to_string(), chosen)
+    }))
+}
+
 /// How a run ended, for the line the Jobs list shows after it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RunEnd {
@@ -685,11 +853,18 @@ pub async fn run_job_ended(
             "There are no jobs yet. Add one with: onefolder jobs add",
         ));
     }
+    // The destinations ticked on the checklist `p` opens in the picker.
+    let mut picked: Option<Vec<String>> = None;
     let name =
         match job {
             Some(name) => name.to_string(),
-            None if interactive => match pick_job(paths, config).await? {
+            // `p` is Enter when `--dest` already names the destinations.
+            None if interactive => match pick_job(paths, config, opts.dest.is_empty()).await? {
                 Some(Chosen::Job(name)) => name,
+                Some(Chosen::Partial(name, ids)) => {
+                    picked = Some(ids);
+                    name
+                }
                 Some(Chosen::Several(names)) => {
                     return run_batch_ended(paths, rclone, Some(names), opts, ended).await
                 }
@@ -710,22 +885,29 @@ pub async fn run_job_ended(
             &format!("There is no job called {name}. See onefolder jobs list."),
         ));
     };
-    let destinations: Vec<&Destination> = match &opts.dest {
-        Some(id) => match job.destinations.iter().find(|d| d.id() == id) {
-            Some(d) => vec![d],
-            None => {
-                return Ok(refuse(
-                    &name,
-                    opts.json,
-                    "unknown-destination",
-                    &format!(
-                        "Job {name} has no destination {id}. See onefolder jobs list --json for the ids."
-                    ),
-                ))
-            }
-        },
-        None => job.destinations.iter().collect(),
-    };
+    let wanted = picked.as_ref().unwrap_or(&opts.dest);
+    if let Some(id) = wanted
+        .iter()
+        .find(|id| !job.destinations.iter().any(|d| d.id() == id.as_str()))
+    {
+        return Ok(refuse(
+            &name,
+            opts.json,
+            "unknown-destination",
+            &format!(
+                "Job {name} has no destination {id}. See onefolder jobs list --json for the ids."
+            ),
+        ));
+    }
+    // Config order, however they were named; a destination named twice
+    // runs once.
+    let destinations: Vec<&Destination> = job
+        .destinations
+        .iter()
+        .filter(|d| wanted.is_empty() || wanted.iter().any(|id| id == d.id()))
+        .collect();
+    // Some of the job's destinations left out: a partial run.
+    let partial = destinations.len() < job.destinations.len();
     if destinations.is_empty() {
         return Ok(refuse(
             &name,
@@ -786,18 +968,28 @@ pub async fn run_job_ended(
         }
     };
 
+    // `Run records · partial, 2 of 3 destinations` for a partial run.
+    let title = if partial {
+        partial::title(&name, destinations.len(), job.destinations.len())
+    } else {
+        name.clone()
+    };
     let mut output = if opts.json {
-        Output::Json(JsonReporter::stdout(&name))
+        let mut r = JsonReporter::stdout(&name);
+        if !wanted.is_empty() {
+            r.chosen = Some(destinations.iter().map(|d| d.id().to_string()).collect());
+        }
+        Output::Json(r)
     } else if interactive {
-        match TuiReporter::start(&name, opts.dry_run) {
+        match TuiReporter::start(&title, opts.dry_run) {
             Ok(screen) => Output::Screen(Box::new(screen)),
             // Inside the interactive session plain text would land on the
             // alternate screen in raw mode: say why instead.
             Err(e) if crate::ui::session::is_open() => return Err(e),
-            Err(_) => Output::Plain(PlainReporter::stdout(&name)),
+            Err(_) => Output::Plain(PlainReporter::stdout(&title)),
         }
     } else {
-        Output::Plain(PlainReporter::stdout(&name))
+        Output::Plain(PlainReporter::stdout(&title))
     };
 
     let turn = Turn {
@@ -820,9 +1012,14 @@ pub async fn run_job_ended(
     let stopped = interrupts.interrupted();
     drop(interrupts);
 
+    // Only the destinations chosen count, here and in `done`.
     let outcomes: Vec<DestResult> = results.iter().map(|r| r.result).collect();
     let exit = exit_code(&outcomes);
-    output.finish(&name, opts.dry_run, exit, &results)?;
+    let lines = partial.then(|| {
+        let state = State::load(&paths.state_file()).unwrap_or_default();
+        partial_lines(job, &results, &state, crate::cli::jobs::now())
+    });
+    output.finish(&name, opts.dry_run, exit, &results, lines.as_deref())?;
     *ended = RunEnd::Ran(vec![(job_end(exit, stopped), outcomes)]);
     Ok(ExitCode::from(exit))
 }
@@ -942,11 +1139,11 @@ pub async fn run_batch_ended(
             "There are no jobs yet. Add one with: onefolder jobs add",
         ));
     }
-    if opts.dest.is_some() {
+    if !opts.dest.is_empty() {
         return Ok(refuse_batch(
             opts.json,
             "dest-needs-one-job",
-            "--dest runs one destination of one job. Name a single job with it, such as: \
+            "--dest runs some destinations of one job. Name a single job with it, such as: \
              onefolder run documents --dest d-7f3a",
         ));
     }
@@ -1317,10 +1514,11 @@ mod tests {
     }
 
     /// The job picker's lists, answered from a script: each answer is a
-    /// picker row (`Some(i)`), Esc (`None`), or the selection screen's
-    /// names.
+    /// picker row (`Some(i)`), Esc (`None`), `p` on a picker row, or the
+    /// names (or ids) a selection screen starts with.
     enum Step {
         Pick(Option<usize>),
+        Partial(usize),
         Tick(Option<Vec<&'static str>>),
     }
 
@@ -1330,19 +1528,46 @@ mod tests {
         seen: Vec<Vec<bool>>,
     }
 
+    impl Scripted {
+        fn new(steps: Vec<Step>) -> Self {
+            Scripted {
+                steps,
+                seen: vec![],
+            }
+        }
+
+        fn ticks(&mut self) -> Option<Vec<String>> {
+            match self.steps.remove(0) {
+                Step::Tick(names) => names.map(|n| n.iter().map(|s| s.to_string()).collect()),
+                _ => panic!("a selection screen, not a picker"),
+            }
+        }
+    }
+
     impl Lists for Scripted {
         fn pick(&mut self, _: Picker) -> Result<Option<usize>> {
             match self.steps.remove(0) {
                 Step::Pick(i) => Ok(i),
-                Step::Tick(_) => panic!("a picker, not the selection screen"),
+                _ => panic!("a picker, not p or the selection screen"),
+            }
+        }
+        fn pick_job(&mut self, _: Picker) -> Result<Option<Picked>> {
+            match self.steps.remove(0) {
+                Step::Pick(i) => Ok(i.map(Picked::Chosen)),
+                Step::Partial(i) => Ok(Some(Picked::Partial(i))),
+                Step::Tick(_) => panic!("the job picker, not the selection screen"),
             }
         }
         fn choose(&mut self, chooser: ChooseJobs) -> Result<Option<Vec<String>>> {
             self.seen.push(chooser.ticked.clone());
-            match self.steps.remove(0) {
-                Step::Tick(names) => Ok(names.map(|n| n.iter().map(|s| s.to_string()).collect())),
-                Step::Pick(_) => panic!("the selection screen, not a picker"),
-            }
+            Ok(self.ticks())
+        }
+        fn choose_destinations(
+            &mut self,
+            chooser: ChooseDestinations,
+        ) -> Result<Option<Vec<String>>> {
+            self.seen.push(chooser.ticked.clone());
+            Ok(self.ticks())
         }
     }
 
@@ -1427,7 +1652,7 @@ mod tests {
             seen: vec![],
         };
         assert_eq!(
-            choose(&paths, &config, &mut lists).unwrap(),
+            choose(&paths, &config, &mut lists, true).unwrap(),
             Some(Chosen::Job("records".into()))
         );
         // Several, Esc back to the list, Esc again leaves.
@@ -1435,14 +1660,14 @@ mod tests {
             steps: vec![Pick(Some(3)), Pick(None), Pick(None)],
             seen: vec![],
         };
-        assert_eq!(choose(&paths, &config, &mut lists).unwrap(), None);
+        assert_eq!(choose(&paths, &config, &mut lists, true).unwrap(), None);
         // Several, all.
         let mut lists = Scripted {
             steps: vec![Pick(Some(3)), Pick(Some(0))],
             seen: vec![],
         };
         assert_eq!(
-            choose(&paths, &config, &mut lists).unwrap(),
+            choose(&paths, &config, &mut lists, true).unwrap(),
             Some(Chosen::Several(vec![
                 "documents".into(),
                 "records".into(),
@@ -1462,7 +1687,7 @@ mod tests {
             seen: vec![],
         };
         assert_eq!(
-            choose(&paths, &config, &mut lists).unwrap(),
+            choose(&paths, &config, &mut lists, true).unwrap(),
             Some(Chosen::Several(vec!["documents".into(), "photos".into()]))
         );
         assert_eq!(lists.seen, [[true, true, true], [true, true, true]]);
@@ -1478,7 +1703,7 @@ mod tests {
             ],
             seen: vec![],
         };
-        assert_eq!(choose(&paths, &config, &mut lists).unwrap(), None);
+        assert_eq!(choose(&paths, &config, &mut lists, true).unwrap(), None);
         assert_eq!(lists.seen, [[true, false, true]]);
         assert_eq!(unticked(), ["records"]);
         // A single tick is a run of that job alone.
@@ -1487,9 +1712,212 @@ mod tests {
             seen: vec![],
         };
         assert_eq!(
-            choose(&paths, &config, &mut lists).unwrap(),
+            choose(&paths, &config, &mut lists, true).unwrap(),
             Some(Chosen::Job("photos".into()))
         );
         assert_eq!(unticked(), ["documents", "records"]);
+    }
+
+    /// `documents` with one destination, `records` with three.
+    fn records() -> (tempfile::TempDir, Paths, Config) {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths {
+            config_dir: dir.path().join("config"),
+            data_dir: dir.path().join("data"),
+        };
+        let dest = |id: &str, name: &str| {
+            format!(
+                "\n  [[jobs.destinations]]\n  id = \"{id}\"\n  type = \"local\"\n  path = \"{}\"\n",
+                dir.path().join(name).display()
+            )
+        };
+        let text = format!(
+            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = \"{}\"\n{}\n\
+             [[jobs]]\nname = \"records\"\nsource = \"{}\"\n{}{}{}",
+            dir.path().join("documents").display(),
+            dest("d-0001", "documents-copy"),
+            dir.path().join("records").display(),
+            dest("d-0002", "records-a"),
+            dest("d-0003", "records-b"),
+            dest("d-0004", "records-c"),
+        );
+        let config = ConfigFile::parse(&paths.config_file(), &text)
+            .unwrap()
+            .config;
+        (dir, paths, config)
+    }
+
+    #[test]
+    fn p_on_the_job_picker_chooses_some_destinations_and_remembers() {
+        use Step::*;
+        let (_dir, paths, config) = records();
+        let unticked = || {
+            State::load(&paths.state_file())
+                .unwrap()
+                .partial_unticked
+                .get("records")
+                .cloned()
+        };
+        // p, then two of three: a partial run, its ticks saved on Enter.
+        let mut lists = Scripted::new(vec![Partial(1), Tick(Some(vec!["d-0002", "d-0004"]))]);
+        assert_eq!(
+            choose(&paths, &config, &mut lists, true).unwrap(),
+            Some(Chosen::Partial(
+                "records".into(),
+                vec!["d-0002".into(), "d-0004".into()]
+            ))
+        );
+        assert_eq!(lists.seen, [[true, true, true]], "all ticked at first");
+        assert_eq!(unticked(), Some(vec!["d-0003".to_string()]));
+        // Next time the ticks start there; Esc goes back to the picker and
+        // saves nothing.
+        let mut lists = Scripted::new(vec![Partial(1), Tick(None), Pick(None)]);
+        assert_eq!(choose(&paths, &config, &mut lists, true).unwrap(), None);
+        assert_eq!(lists.seen, [[true, false, true]]);
+        assert_eq!(unticked(), Some(vec!["d-0003".to_string()]));
+        // Back from the checklist, Enter on the job runs all of it.
+        let mut lists = Scripted::new(vec![Partial(1), Tick(None), Pick(Some(1))]);
+        assert_eq!(
+            choose(&paths, &config, &mut lists, true).unwrap(),
+            Some(Chosen::Job("records".into()))
+        );
+        // All ticked is the whole job, and forgets the ticks.
+        let mut lists = Scripted::new(vec![
+            Partial(1),
+            Tick(Some(vec!["d-0002", "d-0003", "d-0004"])),
+        ]);
+        assert_eq!(
+            choose(&paths, &config, &mut lists, true).unwrap(),
+            Some(Chosen::Job("records".into()))
+        );
+        assert_eq!(unticked(), None);
+        // An id no longer in the job is ignored; the rest stay unticked.
+        State::update(&paths, |s| {
+            s.partial_unticked
+                .insert("records".into(), vec!["d-gone".into(), "d-0004".into()]);
+        })
+        .unwrap();
+        let mut lists = Scripted::new(vec![Partial(1), Tick(Some(vec!["d-0003"]))]);
+        assert_eq!(
+            choose(&paths, &config, &mut lists, true).unwrap(),
+            Some(Chosen::Partial("records".into(), vec!["d-0003".into()]))
+        );
+        assert_eq!(lists.seen, [[true, true, false]]);
+        assert_eq!(
+            unticked(),
+            Some(vec!["d-0002".to_string(), "d-0004".to_string()])
+        );
+        // The Jobs list's p: a job with one destination needs no checklist.
+        let mut lists = Scripted::new(vec![]);
+        assert_eq!(
+            destinations(&paths, &config, "documents", &mut lists).unwrap(),
+            Some(Chosen::Job("documents".into()))
+        );
+        let mut lists = Scripted::new(vec![Tick(None)]);
+        assert_eq!(
+            destinations(&paths, &config, "records", &mut lists).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn the_job_picker_offers_p_on_jobs_with_several_destinations() {
+        struct Seen(Vec<bool>);
+        impl Lists for Seen {
+            fn pick(&mut self, _: Picker) -> Result<Option<usize>> {
+                unreachable!()
+            }
+            fn pick_job(&mut self, picker: Picker) -> Result<Option<Picked>> {
+                self.0 = picker.partial;
+                Ok(None)
+            }
+            fn choose(&mut self, _: ChooseJobs) -> Result<Option<Vec<String>>> {
+                unreachable!()
+            }
+            fn choose_destinations(
+                &mut self,
+                _: ChooseDestinations,
+            ) -> Result<Option<Vec<String>>> {
+                unreachable!()
+            }
+        }
+        let (_dir, paths, config) = records();
+        let mut seen = Seen(vec![]);
+        choose(&paths, &config, &mut seen, true).unwrap();
+        assert_eq!(seen.0, [false, true]);
+        // With --dest, p is Enter everywhere.
+        choose(&paths, &config, &mut seen, false).unwrap();
+        assert_eq!(seen.0, [false, false]);
+    }
+
+    /// A partial run's closing summary keeps the destinations left out in
+    /// their place, and they count for nothing in the exit code.
+    #[test]
+    fn destinations_not_chosen_are_listed_but_not_counted() {
+        let (_dir, _paths, config) = records();
+        let job = config.job("records").unwrap();
+        let ok = |id: &str| Ran {
+            id: id.into(),
+            display: id.into(),
+            mode: Mode::OneWay,
+            result: DestResult::Ran(Outcome::Ok),
+            reason: None,
+        };
+        let results = vec![ok("d-0002"), ok("d-0004")];
+        let outcomes: Vec<DestResult> = results.iter().map(|r| r.result).collect();
+        assert_eq!(exit_code(&outcomes), 0, "both chosen ok");
+        let mut state = State::default();
+        let record: crate::model::RunRecord = serde_json::from_value(serde_json::json!({
+            "started": "2026-10-10T11:40:00+11:00",
+            "finished": "2026-10-10T11:41:02+11:00",
+            "mode": "one-way",
+            "dry_run": false,
+            "outcome": "failed",
+            "log": "logs/records/x.log",
+            "rclone_version": "1.75.2",
+        }))
+        .unwrap();
+        state.record_run("records", "d-0003", record);
+        let now = crate::ui::jobs::unix_seconds("2026-10-13T11:41:02+11:00").unwrap();
+        let lines = partial_lines(job, &results, &state, now);
+        let words: Vec<(&str, Option<&str>)> = lines
+            .iter()
+            .map(|l| (l.outcome.as_str(), l.reason.as_deref()))
+            .collect();
+        assert_eq!(
+            words,
+            [
+                ("ok", None),
+                (partial::NOT_CHOSEN, Some("last run 3d ago")),
+                ("ok", None)
+            ]
+        );
+        // Never run.
+        let lines = partial_lines(job, &results[..1], &State::default(), now);
+        assert_eq!(lines[1].reason.as_deref(), Some("never run"));
+        assert_eq!(lines[2].outcome, partial::NOT_CHOSEN);
+        // Always shown, even with one chosen; a whole run keeps its rule.
+        assert!(job_closing("records", false, &results[..1], Some(&lines), false).is_some());
+        assert!(job_closing("records", false, &results[..1], None, false).is_none());
+    }
+
+    #[test]
+    fn dest_is_repeatable() {
+        use clap::Parser;
+        #[derive(Parser)]
+        struct T {
+            #[command(flatten)]
+            run: RunArgs,
+        }
+        let t =
+            T::try_parse_from(["t", "records", "--dest", "d-0002", "--dest", "d-0004"]).unwrap();
+        assert_eq!(t.run.dest, ["d-0002", "d-0004"]);
+        let t = T::try_parse_from(["t", "records", "--dest=d-0002"]).unwrap();
+        assert_eq!(t.run.dest, ["d-0002"]);
+        assert!(T::try_parse_from(["t", "records"])
+            .unwrap()
+            .run
+            .dest
+            .is_empty());
     }
 }

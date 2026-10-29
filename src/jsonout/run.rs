@@ -46,6 +46,11 @@
 //!                   "reason":"Backup drive not mounted"|null}]}
 //! ```
 //!
+//! With `--dest` (one destination or several of the job), every `start`
+//! also carries `"chosen":["d-91c0","d-2b7e"]`, the ids named, in config
+//! order; `index` and `of` then count among them, and `done` lists only
+//! them. A run without `--dest` has no `chosen` field.
+//!
 //! `done` lists every destination in the order they ran (config order),
 //! with `exit_code` 0 when all are ok, 1 when any is partial, failed,
 //! cancelled, skipped or declined, and 2 when all failed. A run refused
@@ -184,6 +189,9 @@ pub struct JsonReporter<W: Write> {
     last_progress: Option<Instant>,
     /// In a batch: the job's place in it, 1-based, and how many jobs.
     batch: Option<(usize, usize)>,
+    /// The destination ids named with `--dest`, in config order: every
+    /// `start` then carries them as `chosen`.
+    pub chosen: Option<Vec<String>>,
 }
 
 /// One job's result in the closing `batch-done` line.
@@ -211,6 +219,7 @@ impl<W: Write> JsonReporter<W> {
             destination: String::new(),
             last_progress: None,
             batch: None,
+            chosen: None,
         }
     }
 
@@ -394,17 +403,18 @@ impl<W: Write> Reporter for JsonReporter<W> {
 
     fn destination_started(&mut self, dest: &DestinationInfo) {
         self.destination = dest.id.clone();
-        self.event(
-            "start",
-            json!({
-                "type": dest.kind,
-                "display": dest.display,
-                "mode": dest.mode,
-                "index": dest.index,
-                "of": dest.of,
-                "dry_run": dest.dry_run,
-            }),
-        );
+        let mut fields = json!({
+            "type": dest.kind,
+            "display": dest.display,
+            "mode": dest.mode,
+            "index": dest.index,
+            "of": dest.of,
+            "dry_run": dest.dry_run,
+        });
+        if let (Some(chosen), Some(map)) = (&self.chosen, fields.as_object_mut()) {
+            map.insert("chosen".to_string(), json!(chosen));
+        }
+        self.event("start", fields);
     }
 
     fn step(&mut self, step: Step) {
@@ -976,5 +986,35 @@ mod tests {
         r.done(0, &[]);
         let text = String::from_utf8(r.into_inner()).unwrap();
         assert!(!text.contains("batch"), "{text}");
+    }
+
+    /// With `--dest`, every `start` names the destinations chosen; without
+    /// it, `start` is as it always was.
+    #[test]
+    fn start_names_the_destinations_chosen_with_dest() {
+        let dest = DestinationInfo {
+            job: "records".into(),
+            id: "d-0003".into(),
+            kind: "onedrive",
+            display: "work:Archive/Records".into(),
+            mode: Mode::TwoWay,
+            index: 2,
+            of: 2,
+            dry_run: false,
+        };
+        let mut r = JsonReporter::new(Vec::new(), "records");
+        r.chosen = Some(vec!["d-0001".into(), "d-0003".into()]);
+        r.destination_started(&dest);
+        let text = String::from_utf8(r.into_inner()).unwrap();
+        assert_eq!(
+            text,
+            "{\"event\":\"start\",\"job\":\"records\",\"destination\":\"d-0003\",\
+             \"type\":\"onedrive\",\"display\":\"work:Archive/Records\",\"mode\":\"two-way\",\
+             \"index\":2,\"of\":2,\"dry_run\":false,\"chosen\":[\"d-0001\",\"d-0003\"]}\n"
+        );
+        let mut r = JsonReporter::new(Vec::new(), "records");
+        r.destination_started(&dest);
+        let text = String::from_utf8(r.into_inner()).unwrap();
+        assert!(!text.contains("chosen"), "{text}");
     }
 }

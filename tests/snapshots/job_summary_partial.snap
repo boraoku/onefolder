@@ -1,0 +1,10 @@
+---
+source: src/ui/summary.rs
+expression: text.clone()
+---
+======================================================================
+records   partial run · 2 of 3 destinations · 2 ok
+  ✓ boramektup:Records           one-way   ok
+  · /Volumes/T7 Shield/Records   one-way   not chosen · last run 3d ago
+  ✓ work:Archive/Records         two-way   ok
+======================================================================

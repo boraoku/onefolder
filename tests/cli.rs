@@ -186,6 +186,7 @@ fn run_help_lists_its_flags() {
         "--folder-deletes",
         "--dest",
         "--resync",
+        "repeat it to run several",
     ] {
         assert = assert.stdout(predicate::str::contains(flag));
     }
@@ -730,7 +731,7 @@ fn batch_refusals() {
         .assert()
         .code(2)
         .stderr(predicate::str::contains(
-            "--dest runs one destination of one job",
+            "--dest runs some destinations of one job",
         ));
     // --all with job names is a usage error.
     onefolder(&home)
@@ -1040,7 +1041,8 @@ fn jobs_edit_rename_keeps_ids_and_moves_data() {
               "started": "2026-10-13T09:41:02+11:00", "finished": "2026-10-13T09:43:40+11:00",
               "mode": "two-way", "dry_run": false, "outcome": "ok",
               "log": "logs/documents/{first}/run.jsonl", "rclone_version": "1.75.2"}}}},
-              "holds": {{"documents/{first}": ["Old"]}}}}"#
+              "holds": {{"documents/{first}": ["Old"]}},
+              "partial_unticked": {{"documents": ["{first}"]}}}}"#
         ),
     )
     .unwrap();
@@ -1075,6 +1077,12 @@ fn jobs_edit_rename_keeps_ids_and_moves_data() {
     assert!(data.join(format!("logs/docs/{first}/run.jsonl")).exists());
     assert!(data.join(format!("bisync/docs/{first}")).is_dir());
     assert!(!data.join("logs/documents").exists());
+    let state: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(data.join("state.json")).unwrap()).unwrap();
+    assert_eq!(
+        state["partial_unticked"],
+        serde_json::json!({ "docs": [first] })
+    );
 
     // The other flags: change excludes, drop a destination.
     h.cmd()
@@ -1095,6 +1103,9 @@ fn jobs_edit_rename_keeps_ids_and_moves_data() {
         serde_json::json!(["node_modules/**"])
     );
     assert_eq!(v["data"][0]["destinations"].as_array().unwrap().len(), 1);
+    // The ticks of `p` followed the rename, and went with the destination.
+    let state = std::fs::read_to_string(data.join("state.json")).unwrap();
+    assert!(!state.contains("partial_unticked"), "{state}");
 }
 
 #[cfg(unix)]

@@ -184,8 +184,10 @@ impl ProgressModel {
         let width = usize::from(width);
         let stats = self.shown_stats();
         let mut lines = vec![
+            // `Run records · partial, 2 of 3 destinations` is cut with `…`
+            // on a narrow screen rather than at its edge.
             Line::from(Span::styled(
-                format!("Run {}", self.job),
+                super::fit_text(&format!("Run {}", self.job), width),
                 theme::style(Tone::Bold),
             )),
             Line::default(),
@@ -1502,5 +1504,22 @@ mod tests {
                 "photos closing",
             ]
         );
+    }
+
+    /// A partial run says so in its title, cut with `…` when narrow.
+    #[test]
+    fn a_partial_runs_title() {
+        let m = ProgressModel::new(&crate::ui::partial::title("records", 2, 3));
+        let title = |width| {
+            m.lines(width)[0]
+                .spans
+                .iter()
+                .map(|s| s.content.to_string())
+                .collect::<String>()
+        };
+        assert_eq!(title(80), "Run records · partial, 2 of 3 destinations");
+        let narrow = title(30);
+        assert!(crate::ui::width(&narrow) <= 30, "{narrow}");
+        assert!(narrow.starts_with("Run records · partial") && narrow.ends_with('…'));
     }
 }

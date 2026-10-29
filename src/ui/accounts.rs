@@ -359,6 +359,11 @@ pub struct Picker {
     /// What Esc does, for the keys line: `cancel`, or `back` where Esc goes
     /// back to an earlier list.
     pub esc: &'static str,
+    /// The items on which `p` chooses some of the item rather than all of
+    /// it (`Run which job?`: the jobs with two destinations or more). Empty
+    /// for every other picker, where `p` does nothing; on an item not
+    /// marked, `p` chooses it as Enter does.
+    pub partial: Vec<bool>,
     pub cursor: usize,
     /// The terminal's width: every line is fitted to it, so the inline
     /// redraw (which counts lines) never meets a wrapped one.
@@ -369,6 +374,8 @@ pub struct Picker {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Picked {
     Chosen(usize),
+    /// `p` on an item marked in [`Picker::partial`].
+    Partial(usize),
     Cancelled,
 }
 
@@ -380,9 +387,15 @@ impl Picker {
             extra: None,
             note: None,
             esc: "cancel",
+            partial: Vec::new(),
             cursor: 0,
             width: None,
         }
+    }
+
+    /// `p` chooses some of the item under the cursor.
+    fn on_partial(&self) -> bool {
+        self.partial.get(self.cursor).copied().unwrap_or(false)
     }
 
     /// Rows to choose from: the items and the extra row.
@@ -402,6 +415,12 @@ impl Picker {
                 None
             }
             KeyCode::Enter if self.rows() > 0 => Some(Picked::Chosen(self.cursor)),
+            KeyCode::Char('p') if self.on_partial() => Some(Picked::Partial(self.cursor)),
+            // On an item with nothing to choose from, as Enter; never on
+            // the extra row.
+            KeyCode::Char('p') if !self.partial.is_empty() && self.cursor < self.items.len() => {
+                Some(Picked::Chosen(self.cursor))
+            }
             KeyCode::Esc | KeyCode::Char('q') => Some(Picked::Cancelled),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 Some(Picked::Cancelled)
@@ -478,21 +497,28 @@ impl Picker {
         if self.note.is_some() {
             lines.push(Vec::new());
         }
+        let keys = |partial: bool| {
+            format!(
+                "{}{} j/k move {dot} enter select {dot} {}esc {}",
+                theme::UP,
+                theme::DOWN,
+                if partial {
+                    format!("p partial {} ", theme::DOT)
+                } else {
+                    String::new()
+                },
+                self.esc,
+                dot = theme::DOT
+            )
+        };
+        // `p partial` gives way first, so `esc` keeps its word.
+        let mut text = keys(self.on_partial());
+        if line_max.is_some_and(|m| super::width(&text) > m) {
+            text = keys(false);
+        }
         lines.push(vec![
             s("  ", Tone::Plain),
-            s(
-                &fit(
-                    &format!(
-                        "{}{} j/k move {dot} enter select {dot} esc {}",
-                        theme::UP,
-                        theme::DOWN,
-                        self.esc,
-                        dot = theme::DOT
-                    ),
-                    line_max,
-                ),
-                Tone::Dim,
-            ),
+            s(&fit(&text, line_max), Tone::Dim),
         ]);
         lines
     }
@@ -558,7 +584,7 @@ impl Inline for Picker {
     }
     fn key(&mut self, key: KeyEvent) -> Option<Option<usize>> {
         self.handle_key(key).map(|p| match p {
-            Picked::Chosen(i) => Some(i),
+            Picked::Chosen(i) | Picked::Partial(i) => Some(i),
             Picked::Cancelled => None,
         })
     }

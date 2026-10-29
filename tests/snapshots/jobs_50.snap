@@ -1,6 +1,5 @@
 ---
 source: src/ui/jobs.rs
-assertion_line: 1351
 expression: value
 ---
 "                                                  "
@@ -8,10 +7,10 @@ expression: value
 "                                                  "
 "    Several jobs, one after another…              "
 "                                                  "
-"  ➤ documents      ~/Documents                    "
+"    documents      ~/Documents                    "
 "        → work:…/Documents  two-way   ✓ 2h ago    "
 "        → …ackup/Documents  one-way   ◎ not moun  "
-"    photos         ~/Pictures/Photos              "
+"  ➤ photos         ~/Pictures/Photos              "
 "        → personal:Photos   one-way   ✓ yesterda  "
 "    notes          ~/Notes                        "
 "        → work:Notes        two-way   ✗ failed 3  "

@@ -6,6 +6,35 @@ versioning; the release workflow publishes a version when its tag (such as
 the Unreleased section to `## <version> - <date>`, which dist uses as the
 release notes.
 
+## Unreleased
+
+### Some of a job's destinations
+
+- Where Enter runs a job (the Jobs list, and `Run which job?` of
+  `onefolder run` on its own), `p` runs only some of its destinations.
+  On a job with two destinations or more it opens `Choose destinations`,
+  a checklist of them with what the Jobs list says about each (`✓ 2h
+  ago`, `◎ not mounted`); Space ticks, `a` all, `n` none, Enter starts,
+  Esc goes back. The ticks are remembered for each job, and a
+  destination added since starts ticked. On a job with one destination
+  `p` runs it as Enter does; the keys line offers `p partial` only where
+  it chooses. After the run the Jobs list says `✓ Ran 2 of 3
+  destinations of records`.
+- The chosen destinations run as the job always does, in config order,
+  with the same previews and confirmations. The run screen says `Run
+  records · partial, 2 of 3 destinations`, and the closing summary,
+  always shown, keeps the others in their place, dimmed, as `not chosen
+  · last run 3d ago`. They do not count in the exit code.
+- `--dest` repeats: `onefolder run records --dest d-0001 --dest d-0003`
+  runs those two, with the same title and summary. An id the job does
+  not have refuses the run before anything runs, as before. With
+  `--json`, every `start` event of a run with `--dest` carries `chosen`,
+  the ids named, and `done` lists only them; a run without `--dest` is
+  unchanged. `--dest` with several jobs is refused with `--dest runs some
+  destinations of one job`.
+- A job's closing summary is fitted to a narrow terminal's width.
+- The ticks of a destination removed from a job are forgotten with it.
+
 ## 0.3.1 - 2026-10-28
 
 ### Job form

@@ -231,12 +231,15 @@ pub(crate) fn outcome_mark(outcome: &str) -> (&'static str, &'static str, Tone) 
         "cancelled" => (theme::SKIPPED, "cancelled", Tone::Warning),
         "needs-resync" => (theme::FAILED, "needs resync", Tone::Error),
         "declined" => (theme::SKIPPED, "not confirmed", Tone::Warning),
+        super::partial::NOT_CHOSEN => (theme::DOT, "not chosen", Tone::Dim),
         _ => (theme::SKIPPED, "skipped", Tone::Warning),
     }
 }
 
 /// The job's closing summary, after every destination's block: one line
-/// per destination, in the order they ran, with its outcome.
+/// per destination, in the order they ran, with its outcome. In a partial
+/// run the destinations left out ([`super::partial::NOT_CHOSEN`]) keep
+/// their place, dimmed, and are not counted.
 /// `width` is the terminal's: long destinations are then shortened in
 /// the middle; `None` prints them in full.
 pub fn job_summary_lines(
@@ -267,17 +270,41 @@ pub fn job_summary_lines(
         })
         .filter(|(_, n)| *n > 0)
         .collect();
-    let mut title = format!(
-        "{job}   {} destination{}",
-        dests.len(),
-        if dests.len() == 1 { "" } else { "s" }
-    );
+    let not_chosen = |d: &DestinationLine| d.outcome == super::partial::NOT_CHOSEN;
+    let chosen = dests.iter().filter(|d| !not_chosen(d)).count();
+    let partial = chosen < dests.len();
+    let mut tail = String::new();
     if dry_run {
-        title.push_str(&format!(" {} dry run", theme::DOT));
+        tail.push_str(&format!(" {} dry run", theme::DOT));
     }
     for (word, n) in &counts {
-        title.push_str(&format!(" {} {n} {word}", theme::DOT));
+        tail.push_str(&format!(" {} {n} {word}", theme::DOT));
     }
+    let title = if partial {
+        format!(
+            "{job}   partial run {} {chosen} of {} destinations{tail}",
+            theme::DOT,
+            dests.len()
+        )
+    } else {
+        format!(
+            "{job}   {} destination{}{tail}",
+            dests.len(),
+            if dests.len() == 1 { "" } else { "s" }
+        )
+    };
+    // Fitted like the rules: never wider than the terminal, never
+    // narrower than the narrowest one OneFolder draws for. A partial
+    // run's title gets shorter first (`records · 1 of 3 · dry run · 1
+    // ok`), so its counts survive.
+    let title = match width.map(|w| w.max(theme::MIN_WIDTH)) {
+        Some(w) if partial && super::width(&title) > w => super::fit_text(
+            &format!("{job} {} {chosen} of {}{tail}", theme::DOT, dests.len()),
+            w,
+        ),
+        Some(w) => super::fit_text(&title, w),
+        None => title,
+    };
     lines.push(vec![seg(title, Tone::Bold)]);
     // Room for the indent, the glyph, the mode and a short outcome word.
     let max = width.map(|w| w.saturating_sub(4 + 3 + 10 + 14).max(20));
@@ -291,12 +318,18 @@ pub fn job_summary_lines(
     let column = shown.iter().map(|s| super::width(s)).max().unwrap_or(0) + 3;
     for (d, display) in dests.iter().zip(&shown) {
         let (glyph, word, tone) = outcome_mark(&d.outcome);
+        // A destination left out is dim all along its line.
+        let plain = if not_chosen(d) {
+            Tone::Dim
+        } else {
+            Tone::Plain
+        };
         let mut line = vec![
             seg("  ", Tone::Plain),
             seg(glyph, tone),
             seg(
                 format!(" {}{:<10}", super::pad(display, column), d.mode.as_str()),
-                Tone::Plain,
+                plain,
             ),
             seg(word, tone),
         ];
@@ -308,11 +341,11 @@ pub fn job_summary_lines(
             (Some(reason), Some(w)) if used + 3 + super::width(reason) > w => {
                 lines.push(line);
                 for piece in super::wrap(reason, w.saturating_sub(6).max(20)) {
-                    lines.push(vec![seg(format!("      {piece}"), Tone::Plain)]);
+                    lines.push(vec![seg(format!("      {piece}"), plain)]);
                 }
             }
             (Some(reason), _) => {
-                line.push(seg(format!(" {} {reason}", theme::DOT), Tone::Plain));
+                line.push(seg(format!(" {} {reason}", theme::DOT), plain));
                 lines.push(line);
             }
             (None, _) => lines.push(line),
@@ -684,6 +717,72 @@ Log: ~/.local/share/onefolder/logs/documents/d-7f3a/2026-10-13T094102.jsonl
             dry.contains("documents   1 destination · dry run · 1 ok"),
             "{dry}"
         );
+    }
+
+    /// A partial run: the destinations left out keep their place, dimmed,
+    /// with when they last ran, and are not counted.
+    #[test]
+    fn a_partial_runs_summary_lists_the_destinations_left_out() {
+        let line = |display: &str, mode, outcome: &str, reason: Option<&str>| DestinationLine {
+            display: display.into(),
+            mode,
+            outcome: outcome.into(),
+            reason: reason.map(String::from),
+        };
+        let dests = vec![
+            line("boramektup:Records", Mode::OneWay, "ok", None),
+            line(
+                "/Volumes/T7 Shield/Records",
+                Mode::OneWay,
+                crate::ui::partial::NOT_CHOSEN,
+                Some("last run 3d ago"),
+            ),
+            line("work:Archive/Records", Mode::TwoWay, "ok", None),
+        ];
+        let text = render_job_summary("records", false, &dests, false, None);
+        snapshot!("job_summary_partial", text.clone());
+        assert!(
+            text.contains("records   partial run · 2 of 3 destinations · 2 ok\n"),
+            "{text}"
+        );
+        assert!(
+            text.contains(
+                "  · /Volumes/T7 Shield/Records   one-way   not chosen · last run 3d ago"
+            ),
+            "{text}"
+        );
+        // Dim all along, and the rest as ever.
+        let lines = job_summary_lines("records", false, &dests, None);
+        assert!(lines[3][1..].iter().all(|(_, tone)| *tone == Tone::Dim));
+        assert!(lines[2].contains(&("ok".to_string(), Tone::Success)));
+        // One chosen, in a dry run, at a narrow width.
+        let one = vec![
+            dests[0].clone(),
+            line(
+                "/Volumes/T7 Shield/Records",
+                Mode::OneWay,
+                crate::ui::partial::NOT_CHOSEN,
+                Some("never run"),
+            ),
+            line(
+                "work:Archive/Records",
+                Mode::TwoWay,
+                crate::ui::partial::NOT_CHOSEN,
+                Some("last run yesterday"),
+            ),
+        ];
+        let text = render_job_summary("records", true, &one, false, None);
+        assert!(
+            text.contains("records   partial run · 1 of 3 destinations · dry run · 1 ok\n"),
+            "{text}"
+        );
+        let text = render_job_summary("records", true, &one, false, Some(50));
+        assert!(text.lines().all(|l| crate::ui::width(l) <= 50), "{text}");
+        assert!(
+            text.contains("\nrecords · 1 of 3 · dry run · 1 ok\n"),
+            "the shorter title keeps the counts: {text}"
+        );
+        snapshot!("job_summary_partial_50", text);
     }
 
     #[test]

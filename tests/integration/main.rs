@@ -778,6 +778,151 @@ fn dest_runs_one_destination() {
     assert!(events(&lines, "start", LOCAL).is_empty());
 }
 
+/// A partial run (milestone 17): `--dest` twice runs two of the job's
+/// three destinations, in config order, and leaves the third (two-way)
+/// untouched: no files, no bisync working files, no state; its closing
+/// summary lists it as not chosen, which does not count in the exit code.
+#[test]
+fn dest_twice_runs_two_of_three_destinations() {
+    if !enabled() {
+        return;
+    }
+    let w = World::new();
+    w.config(
+        &(w.local_destination(LOCAL, &w.path("dst"))
+            + &w.local_destination(ALIAS, &w.path("dst2"))
+            + &w.local_destination(TWO_WAY, &w.path("dst3"))
+            + "  mode = \"two-way\"\n"),
+    );
+    fs::create_dir_all(w.path("dst3")).unwrap();
+    w.write("dst3/theirs.txt", "theirs");
+    w.write("src/a.txt", "a");
+    let untouched = || {
+        assert!(!w.path("dst3/a.txt").exists(), "the third got a file");
+        assert!(
+            !w.path(&format!("data/bisync/documents/{TWO_WAY}")).exists(),
+            "the third has bisync working files"
+        );
+        assert!(!w.path("src/theirs.txt").exists(), "the third synced back");
+        let state = w.state();
+        let key = format!("documents/{TWO_WAY}");
+        assert!(state["runs"].get(&key).is_none(), "{state}");
+        assert!(
+            state.get("bisync").and_then(|b| b.get(&key)).is_none(),
+            "{state}"
+        );
+    };
+    // Named out of order and one twice: config order, each once.
+    let (code, lines) = w.run_json(&["--yes", "--dest", ALIAS, "--dest", LOCAL, "--dest", ALIAS]);
+    assert_eq!(code, Some(0), "{lines:#?}");
+    assert!(w.path("dst/a.txt").exists());
+    assert!(w.path("dst2/a.txt").exists());
+    untouched();
+    let starts: Vec<(&str, u64, u64)> = lines
+        .iter()
+        .filter(|l| l["event"] == "start")
+        .map(|l| {
+            assert_eq!(l["chosen"], serde_json::json!([LOCAL, ALIAS]), "{l}");
+            (
+                l["destination"].as_str().unwrap(),
+                l["index"].as_u64().unwrap(),
+                l["of"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(starts, [(LOCAL, 1, 2), (ALIAS, 2, 2)]);
+    let done = lines.last().unwrap();
+    assert_eq!(done["exit_code"], 0);
+    assert_eq!(
+        done["destinations"],
+        serde_json::json!([
+            {"destination": LOCAL, "outcome": "ok", "reason": null},
+            {"destination": ALIAS, "outcome": "ok", "reason": null},
+        ])
+    );
+
+    // The plain text: the partial title and the closing summary, the
+    // third dimmed in its place.
+    w.write("src/b.txt", "b");
+    let out = w
+        .onefolder()
+        .args([
+            "run",
+            "documents",
+            "--yes",
+            "--dest",
+            LOCAL,
+            "--dest",
+            ALIAS,
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(
+        text.starts_with("Run documents · partial, 2 of 3 destinations\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("documents   partial run · 2 of 3 destinations · 2 ok\n"),
+        "{text}"
+    );
+    let rows: Vec<&str> = text
+        .lines()
+        .filter(|l| l.contains("-way   "))
+        .filter(|l| l.starts_with("  ✓ ") || l.starts_with("  · "))
+        .collect();
+    assert_eq!(rows.len(), 3, "{text}");
+    assert!(
+        rows[0].starts_with("  ✓ ") && rows[0].contains("/dst "),
+        "{text}"
+    );
+    assert!(
+        rows[1].starts_with("  ✓ ") && rows[1].contains("/dst2 "),
+        "{text}"
+    );
+    assert!(
+        rows[2].starts_with("  · ")
+            && rows[2].contains("two-way")
+            && rows[2].ends_with("not chosen · never run"),
+        "{text}"
+    );
+    untouched();
+
+    // One destination is a partial run too, with its summary; an unknown
+    // id refuses before anything runs.
+    let out = w
+        .onefolder()
+        .args(["run", "documents", "--yes", "--dest", ALIAS])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(
+        text.contains("documents   partial run · 1 of 3 destinations · 1 ok\n"),
+        "{text}"
+    );
+    assert!(text.contains("not chosen · last run just now"), "{text}");
+    w.write("src/c.txt", "c");
+    let out = w
+        .onefolder()
+        .args([
+            "run",
+            "documents",
+            "--yes",
+            "--dest",
+            LOCAL,
+            "--dest",
+            "d-zzzz",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("has no destination d-zzzz"));
+    assert!(!w.path("dst/c.txt").exists(), "nothing ran");
+    untouched();
+}
+
 /// Ctrl-C mid-copy: OneFolder asks rclone to stop, records the run as
 /// cancelled, prints the summary, and leaves no partial file behind.
 #[test]
@@ -4831,7 +4976,9 @@ fn a_batch_in_plain_text() {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("--dest runs one destination of one job"));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("--dest runs some destinations of one job")
+    );
     fs::remove_file(w.path("dst/a.txt")).unwrap();
     let out = w
         .onefolder()
@@ -5128,6 +5275,60 @@ fn several_jobs_from_the_jobs_list() {
     let all = p.finish();
     assert!(all.contains("EXIT=0"), "{all}");
     assert!(w.path("dst/a.txt").exists() && w.path("dst3/c.txt").exists());
+}
+
+/// `p` on the Jobs list (`onefolder jobs`): the checklist of the job's
+/// destinations, one unticked, Enter runs the other two as a partial run;
+/// the list comes back saying so, the one left out untouched, and the
+/// ticks are remembered.
+#[test]
+fn p_on_the_jobs_list_runs_some_destinations() {
+    if !enabled() {
+        return;
+    }
+    let w = World::new();
+    w.config(
+        &(w.local_destination(LOCAL, &w.path("dst"))
+            + &w.local_destination(ALIAS, &w.path("dst2"))
+            + &w.local_destination(TWO_WAY, &w.path("dst3"))),
+    );
+    w.write("src/a.txt", "a");
+    let path = format!("{}:/usr/bin:/bin", w.rclone_dir.display());
+    let mut p = Pty::start_with(&w, &path, "jobs");
+    p.wait("➤ documents");
+    p.wait("p partial");
+    p.press(b"p");
+    // Drawn inline under the shell's text, so looked for as printed.
+    p.wait_printed("Choose destinations for documents");
+    p.wait_printed("All 3 destinations will run, as enter on the job does");
+    // Down to the second, untick it.
+    p.press(b"\x1b[B");
+    p.press(b" ");
+    p.wait_printed("2 of 3 destinations will run, one after another");
+    p.press(b"\r");
+    p.wait("Run documents · partial, 2 of 3 destinations");
+    p.wait("Continue?");
+    p.press(b"y");
+    // The second chosen destination: the third of the job.
+    p.wait("dst3   one-way");
+    p.wait("Continue?");
+    p.press(b"y");
+    p.wait_printed("documents   partial run · 2 of 3 destinations · 2 ok");
+    p.wait_printed("Press any key to go back to the jobs list.");
+    p.press(b" ");
+    p.wait("Ran 2 of 3 destinations of documents");
+    p.press(b"q");
+    let all = p.finish();
+    assert!(all.contains("EXIT=0"), "{all}");
+    assert!(w.path("dst/a.txt").exists());
+    assert!(w.path("dst3/a.txt").exists());
+    assert!(!w.path("dst2").exists(), "the one left out is untouched");
+    let state = w.state();
+    assert!(state["runs"].get(format!("documents/{ALIAS}")).is_none());
+    assert_eq!(
+        state["partial_unticked"],
+        serde_json::json!({ "documents": [ALIAS] })
+    );
 }
 
 /// `j` on the Jobs list (`onefolder jobs`) moves the job down and saves

@@ -22,11 +22,11 @@ use super::summary::{format_duration, outcome_mark, DestinationLine};
 use super::theme::{self, Tone};
 use super::Segment;
 
-fn seg(text: impl Into<String>, tone: Tone) -> Segment {
+pub(super) fn seg(text: impl Into<String>, tone: Tone) -> Segment {
     (text.into(), tone)
 }
 
-fn plural(n: usize, word: &str) -> String {
+pub(super) fn plural(n: usize, word: &str) -> String {
     if n == 1 {
         format!("1 {word}")
     } else {
@@ -277,32 +277,12 @@ impl ChooseJobs {
     /// Applies one key: the names ticked once started, `Some(None)` to go
     /// back (Esc, q, Ctrl-C).
     pub fn handle_key(&mut self, key: KeyEvent) -> Option<Option<Vec<String>>> {
-        let last = self.jobs.len().saturating_sub(1);
+        if tick_key(&key, &mut self.ticked, &mut self.cursor) {
+            return None;
+        }
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => Some(None),
             KeyCode::Esc | KeyCode::Char('q') => Some(None),
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.cursor = self.cursor.saturating_sub(1);
-                None
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                self.cursor = (self.cursor + 1).min(last);
-                None
-            }
-            KeyCode::Char(' ') => {
-                if let Some(t) = self.ticked.get_mut(self.cursor) {
-                    *t = !*t;
-                }
-                None
-            }
-            KeyCode::Char('a') => {
-                self.ticked.iter_mut().for_each(|t| *t = true);
-                None
-            }
-            KeyCode::Char('n') => {
-                self.ticked.iter_mut().for_each(|t| *t = false);
-                None
-            }
             KeyCode::Enter if self.ticked.iter().any(|t| *t) => Some(Some(self.chosen())),
             _ => None,
         }
@@ -381,20 +361,42 @@ impl ChooseJobs {
             max,
         ));
         lines.push(Vec::new());
-        lines.push(cut(
-            vec![seg(
-                format!(
-                    "  {}{} move {d} space tick {d} a all {d} n none {d} enter start {d} esc back",
-                    theme::UP,
-                    theme::DOWN,
-                    d = theme::DOT
-                ),
-                Tone::Dim,
-            )],
-            max,
-        ));
+        lines.push(cut(tick_keys(), max));
         lines
     }
+}
+
+/// The keys line of a selection screen (jobs, or a job's destinations).
+pub(super) fn tick_keys() -> Vec<Segment> {
+    vec![seg(
+        format!(
+            "  {}{} move {d} space tick {d} a all {d} n none {d} enter start {d} esc back",
+            theme::UP,
+            theme::DOWN,
+            d = theme::DOT
+        ),
+        Tone::Dim,
+    )]
+}
+
+/// A key on a selection screen that moves the cursor or changes the
+/// ticks: the arrows and j/k, Space, `a` all, `n` none. True when it was
+/// one of them.
+pub(super) fn tick_key(key: &KeyEvent, ticked: &mut [bool], cursor: &mut usize) -> bool {
+    let last = ticked.len().saturating_sub(1);
+    match key.code {
+        KeyCode::Up | KeyCode::Char('k') => *cursor = cursor.saturating_sub(1),
+        KeyCode::Down | KeyCode::Char('j') => *cursor = (*cursor + 1).min(last),
+        KeyCode::Char(' ') => {
+            if let Some(t) = ticked.get_mut(*cursor) {
+                *t = !*t;
+            }
+        }
+        KeyCode::Char('a') => ticked.iter_mut().for_each(|t| *t = true),
+        KeyCode::Char('n') => ticked.iter_mut().for_each(|t| *t = false),
+        _ => return false,
+    }
+    true
 }
 
 impl Inline for ChooseJobs {
@@ -419,7 +421,7 @@ impl Inline for ChooseJobs {
 }
 
 /// Cuts a line of segments to `max` columns, the last piece ending in `…`.
-fn cut(line: Vec<Segment>, max: Option<usize>) -> Vec<Segment> {
+pub(super) fn cut(line: Vec<Segment>, max: Option<usize>) -> Vec<Segment> {
     let Some(max) = max else {
         return line;
     };

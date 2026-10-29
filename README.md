@@ -66,6 +66,7 @@ onefolder jobs remove documents            # Remove a job; its files and run log
 onefolder jobs release documents FOLDER    # Start syncing a held folder again
 onefolder run documents                    # Run every destination of a job, in order
 onefolder run documents --dest d-7f3a      # Run one destination only (ids are in jobs list --json)
+onefolder run records --dest a --dest b    # Run some of a job's destinations (--dest repeats)
 onefolder run documents photos             # Run several jobs, one after another, in config order
 onefolder run --all                        # Run every job, one after another
 onefolder status                           # The last run of every destination
@@ -194,7 +195,7 @@ In the form, the folder fields (the source, a local destination's folder and a O
 
 When a local destination is on an external drive, OneFolder records the drive's identity (mount point, name and UUID) at this point. See [External drives](#external-drives).
 
-On a terminal, `onefolder jobs` (or **Jobs** in the menu) opens the jobs list (`a` add, `e` edit, `d` remove, Enter runs, `/` filters, `?` shows the keys). On this list `↑`/`↓` move the cursor, and `j` and `k` move the highlighted job down or up the list (Shift+`j`/`k` too); the new order is saved to the config straight away, comments and all, and every list of jobs and every batch follows it. Reordering waits until a filter is cleared. After a run started from the list, the list comes back with fresh statuses and the cursor where it was. `jobs list` prints it instead, with `· hidden files copied` after the source of a job that copies them (`jobs list --json` has `copy_hidden` for every job). `onefolder jobs edit documents` opens the form again; `jobs edit --help` lists the flags for editing from scripts.
+On a terminal, `onefolder jobs` (or **Jobs** in the menu) opens the jobs list (`a` add, `e` edit, `d` remove, Enter runs, `p` runs some of a job's destinations, `/` filters, `?` shows the keys). On this list `↑`/`↓` move the cursor, and `j` and `k` move the highlighted job down or up the list (Shift+`j`/`k` too); the new order is saved to the config straight away, comments and all, and every list of jobs and every batch follows it. Reordering waits until a filter is cleared. After a run started from the list, the list comes back with fresh statuses and the cursor where it was. `jobs list` prints it instead, with `· hidden files copied` after the source of a job that copies them (`jobs list --json` has `copy_hidden` for every job). `onefolder jobs edit documents` opens the form again; `jobs edit --help` lists the flags for editing from scripts.
 
 ### Run
 
@@ -237,6 +238,35 @@ The preview also says what is left out: the job's own exclude patterns, whether 
 onefolder status               # the last run of every destination
 onefolder run documents --dest d-7f3a   # run one destination only (ids are in jobs list --json)
 ```
+
+#### Some of a job's destinations
+
+Where Enter runs a job (the jobs list, and the `Run which job?` list of `onefolder run` on its own), `p` runs only some of its destinations. On a job with two destinations or more it opens a checklist of them, each with what the jobs list says about it (`p partial` is in the keys line there; on a job with one destination `p` simply runs it):
+
+```text
+  Choose destinations for records   ~/Records
+
+    [x] boramektup:Records           one-way   ✓ 2h ago
+  ➤ [ ] /Volumes/T7 Shield/Records   one-way   ◎ not mounted
+    [x] work:Archive/Records         two-way   ✗ needs resync 3d ago
+
+  2 of 3 destinations will run, one after another
+
+  ↑↓ move · space tick · a all · n none · enter start · esc back
+```
+
+Space ticks and unticks, `a` ticks all, `n` none, Enter starts once at least one is ticked, and Esc goes back. The ticks are remembered for each job (a destination added since starts ticked); with every one ticked, Enter is the job's ordinary run. The chosen destinations run as the job always does, in config order, with the same previews and confirmations; the title says `Run records · partial, 2 of 3 destinations`. The run always ends with a closing summary that keeps the others in their place, dimmed, with when they last ran:
+
+```text
+======================================================================
+records   partial run · 2 of 3 destinations · 2 ok
+  ✓ boramektup:Records           one-way   ok
+  · /Volumes/T7 Shield/Records   one-way   not chosen · last run 3d ago
+  ✓ work:Archive/Records         two-way   ok
+======================================================================
+```
+
+The destinations not chosen do not count in the exit code: two chosen and both ok is 0. From the command line, `--dest` repeats: `onefolder run records --dest d-0001 --dest d-0003` runs those two, in config order, with the same title and summary (an id that is not the job's refuses the run before anything runs). With `--json`, every `start` event then carries `chosen`, the ids named, and `done` lists only them.
 
 #### Several jobs, one after another
 
@@ -294,7 +324,7 @@ OneFolder
 ↑↓ j/k move · enter select · ? keys · q quit
 ```
 
-**Jobs** is where jobs are run as well as managed: Enter on a job runs it, and the `Several jobs, one after another…` row at the top runs a batch. On a narrower terminal the hints are shortened with `…` (the Jobs hint drops the last run first, then the drive warning, and keeps the count). Arrows or `j`/`k` move, `g`/`G` go to the first or last item, and Enter opens the selected item. The whole session stays full screen, from the menu to the run screen and back, so your shell's earlier output never shows in between: an item's output (a run's summary, Status, Doctor, an account's sign-in) appears on its own screen, where `↑`/`↓`, `j`/`k`, `pgup`/`pgdn` and `g`/`G` scroll and any other key comes back to the menu; the jobs and accounts lists come back to it with `q`. When you quit, the summary of every run of the session is printed to the terminal, so the results and their `Log:` paths stay in your scrollback. `?` shows the keys, `/` filters the jobs list and the accounts list (type to filter, Enter keeps the filter, Esc clears it), and `q` or Esc quits. Ctrl-C quits OneFolder from any screen (exit code 130), except the run screen, where the first Ctrl-C stops the run. The hints say how many jobs and accounts there are, whether a drive is unplugged or a remote is missing from rclone's config, which jobs need a look, and how many logs there are; none of it needs the network.
+**Jobs** is where jobs are run as well as managed: Enter on a job runs it, `p` runs some of its destinations, and the `Several jobs, one after another…` row at the top runs a batch. On a narrower terminal the hints are shortened with `…` (the Jobs hint drops the last run first, then the drive warning, and keeps the count). Arrows or `j`/`k` move, `g`/`G` go to the first or last item, and Enter opens the selected item. The whole session stays full screen, from the menu to the run screen and back, so your shell's earlier output never shows in between: an item's output (a run's summary, Status, Doctor, an account's sign-in) appears on its own screen, where `↑`/`↓`, `j`/`k`, `pgup`/`pgdn` and `g`/`G` scroll and any other key comes back to the menu; the jobs and accounts lists come back to it with `q`. When you quit, the summary of every run of the session is printed to the terminal, so the results and their `Log:` paths stay in your scrollback. `?` shows the keys, `/` filters the jobs list and the accounts list (type to filter, Enter keeps the filter, Esc clears it), and `q` or Esc quits. Ctrl-C quits OneFolder from any screen (exit code 130), except the run screen, where the first Ctrl-C stops the run. The hints say how many jobs and accounts there are, whether a drive is unplugged or a remote is missing from rclone's config, which jobs need a look, and how many logs there are; none of it needs the network.
 
 </details>
 
@@ -379,7 +409,7 @@ If a file changes in the short time between OneFolder's plan and the real run, b
 | `--json` | Non-interactive: no prompts and no screens. Commands print one JSON document; `run --json` prints newline-delimited JSON events, one per line. While a preview or a two-way plan runs it sends a `progress` event at most once a second: `step`, `elapsed` (seconds), `checked`, `listed`, `to_copy` (`files` and `bytes`), `destination_listed`, `destination_done` and `still_listing`. The `preview` and `plan` events carry `copy_hidden` and `effective_excludes`, every pattern in force. With several jobs (or `--all`) every event except `refused` and `batch-done` also carries `batch` (`index`, the job's place from 1, and `of`); each job that runs ends with its own `done`, a job that does not run sends `job-skipped` (`job`, `code`: `locked`, `lock-failed`, `no-destinations` or `stopped`, and `reason`), and the stream ends with `batch-done` (`ok`, `exit_code` and `jobs`, each with `job`, `outcome`: `ok`, `partial`, `failed`, `stopped` or `skipped`, `reason` and its `destinations` as `done` lists them). A batch refused before anything ran sends `refused` and a `batch-done` with no jobs. |
 | `--folder-deletes` | Answer the folder prompt: `ask`, `delete`, `keep` or `restore`. |
 | `--moves` | One-way: what to do with files moved on your computer whose old copy is on the destination: `ask` (without a terminal: upload them again), `move` (move them there, the default with `--yes`) or `copy` (upload them again). With `--json`, the `preview` event carries `moves` (`count`, `bytes`, `choice`: `undecided`, `move` or `copy`, and the first 10 `pairs` and `groups`), a `moves` event says what was decided and how (`answer`: `move` or `copy`; `by`: `asked`, `flag`, `default` or `not-asked`; `count`, `bytes`), `progress` carries `checking_moves` while possible moves are checked and `moved` (`files` and `of`) during the `moving` step, and the summary carries `moved` (`files` and `bytes`) only when something moved. |
-| `--dest ID` | Run only this destination (one job only). |
+| `--dest ID` | Run only this destination (one job only). Repeat it to run several: `--dest d-0001 --dest d-0003`. The others are listed as `not chosen` in the closing summary and do not count in the exit code; with `--json`, each `start` carries `chosen`. |
 | `--all` | Run every job, one after another, in config order. |
 | `--resync` | Merge both sides again before running (two-way). |
 | `--copy-hidden yes\|no` | On `jobs add` and `jobs edit`: copy hidden files and folders, or leave them out (the default). |
@@ -392,7 +422,7 @@ Exit codes for `onefolder run`:
 | 1 | Partial: errors, or a destination failed, needs a merge (resync), was skipped, declined or cancelled. Declining the preview and pressing Ctrl-C both count. |
 | 2 | Refused before anything ran (rclone missing, unknown job, another run holds the lock), or every destination failed. |
 
-Several jobs follow the same rule over the destinations of every job: 0 when all are ok, 2 when all failed, when the batch was refused before anything ran, or when no job ran a destination (every job skipped because another run holds its lock, or because it has no destinations), and 1 otherwise (a job skipped or not run counts as skipped).
+Several jobs follow the same rule over the destinations of every job: 0 when all are ok, 2 when all failed, when the batch was refused before anything ran, or when no job ran a destination (every job skipped because another run holds its lock, or because it has no destinations), and 1 otherwise (a job skipped or not run counts as skipped). A partial run (`p`, or `--dest` naming some of a job's destinations) follows the rule over the destinations chosen only.
 
 Other commands with `--json` exit 0 on success, 1 on a partial result and 2 on failure or refusal. `accounts test` exits 0 when every account connects, 1 when some fail and 2 when all of them fail.
 

@@ -1,0 +1,10 @@
+---
+source: src/ui/partial.rs
+expression: value
+---
+  Run which job?
+  ➤ documents   ~/Documents
+    records     ~/Records
+    photos      ~/Pictures
+    Several jobs, one after another…
+  ↑↓ j/k move · enter select · esc back

@@ -198,7 +198,7 @@ fn interactive_terminal() -> bool {
     std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
 
-fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -533,6 +533,31 @@ pub async fn interactive(paths: &Paths, rclone: &Rclone) -> Result<ExitCode> {
                 }
                 continue;
             }
+            screen::Action::Partial(name) => {
+                let file = match load(paths) {
+                    Ok(file) => file,
+                    Err(f) => return report("jobs", false, f),
+                };
+                let mut opts = super::run::Options::default();
+                let mut ended = RunEnd::NotRun;
+                // `records`, or `2 of 3 destinations of records` for some.
+                let mut what = name.clone();
+                match super::run::pick_destinations(paths, &file.config, name).await? {
+                    // Back from the checklist: the list as it was.
+                    None => continue,
+                    Some(super::run::Chosen::Partial(_, ids)) => {
+                        let of = file.config.job(name).map_or(0, |j| j.destinations.len());
+                        what = format!("{} of {of} destinations of {name}", ids.len());
+                        opts.dest = ids;
+                    }
+                    Some(_) => {}
+                }
+                super::run::run_job_ended(paths, rclone, Some(name), &opts, &mut ended).await?;
+                if let Err(f) = after_run(paths, &mut screen, &what, &ended, Some(name)).await? {
+                    return report("jobs", false, f);
+                }
+                continue;
+            }
             screen::Action::Several => {
                 let file = match load(paths) {
                     Ok(file) => file,
@@ -553,7 +578,8 @@ pub async fn interactive(paths: &Paths, rclone: &Rclone) -> Result<ExitCode> {
                 let what = match super::run::pick_several(paths, &file.config).await? {
                     // Back from all or some: the list as it was.
                     None => continue,
-                    Some(super::run::Chosen::Job(name)) => {
+                    // All or some never gives some of a job's destinations.
+                    Some(super::run::Chosen::Job(name) | super::run::Chosen::Partial(name, _)) => {
                         super::run::run_job_ended(paths, rclone, Some(&name), &opts, &mut ended)
                             .await?;
                         name
@@ -630,7 +656,8 @@ fn refresh(paths: &Paths, screen: &mut screen::Screen, select: Option<&str>) -> 
 }
 
 /// The line the list shows after a run from it: `what` is the job's name,
-/// or `3 jobs` for a batch.
+/// `2 of 3 destinations of records` for a partial run, or `3 jobs` for a
+/// batch.
 fn ran_message(what: &str, ended: &RunEnd) -> (String, Tone) {
     let warn = |text: String| (format!("{} {text}", theme::SKIPPED), Tone::Warning);
     let see = "see onefolder jobs list";
@@ -1102,6 +1129,13 @@ async fn commit(
                     ),
                     Tone::Plain,
                 ));
+            }
+        }
+        // The ticks of a destination removed in this edit are forgotten.
+        if let Some(ids) = state.partial_unticked.get_mut(&job.name) {
+            ids.retain(|id| job.destinations.iter().any(|d| d.id() == id));
+            if ids.is_empty() {
+                state.partial_unticked.remove(&job.name);
             }
         }
         // Remember which pair each remaining set of listings belongs to.
@@ -1955,6 +1989,17 @@ mod tests {
         assert_eq!(
             text("documents", RunEnd::NotRun),
             ("◎ Did not run documents".to_string(), Tone::Warning)
+        );
+        // A partial run, with p.
+        assert_eq!(
+            text(
+                "2 of 3 destinations of records",
+                one(JobEnd::Ok, vec![ok, ok])
+            ),
+            (
+                "✓ Ran 2 of 3 destinations of records".to_string(),
+                Tone::Success
+            )
         );
         assert_eq!(
             text("documents", one(JobEnd::Stopped, vec![cancelled, Skipped])).0,

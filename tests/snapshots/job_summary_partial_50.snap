@@ -1,0 +1,12 @@
+---
+source: src/ui/summary.rs
+expression: text
+---
+==================================================
+records · 1 of 3 · dry run · 1 ok
+  ✓ boramektup:Records     one-way   ok
+  · …s/T7 Shield/Records   one-way   not chosen
+      never run
+  · work:Archive/Records   two-way   not chosen
+      last run yesterday
+==================================================

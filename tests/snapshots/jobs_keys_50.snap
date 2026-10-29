@@ -1,0 +1,24 @@
+---
+source: src/ui/jobs.rs
+expression: value
+---
+"                                                  "
+"╭ Jobs keys ─────────────────────────────────────╮"
+"│↑↓       move                                   │"
+"│g  G     first, last                            │"
+"│enter    run the job, or several                │"
+"│p        run some of its destinations           │"
+"│a        add a job                              │"
+"│e        edit the job                           │"
+"│d        remove the job (asks first)            │"
+"│j  k     move the job down or up the list       │"
+"│/        filter by name, folder or destination  │"
+"│?        show or hide these keys                │"
+"│esc      clear the filter, or go back           │"
+"│q        go back                                │"
+"│ctrl-c   quit OneFolder                         │"
+"│                                                │"
+"│any key closes this                             │"
+"╰────────────────────────────────────────────────╯"
+"  enter run · a add · e edit · ? keys · q back    "
+"                                                  "

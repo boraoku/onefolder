@@ -73,6 +73,13 @@ pub struct State {
     /// since does too, and a name no longer in the config is ignored.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub batch_unticked: Vec<String>,
+    /// For each job, the destination ids left unticked the last time some
+    /// of its destinations were chosen to run (added in milestone 17;
+    /// written only when there are some). Every other destination starts
+    /// ticked, so one added since does too, and an id no longer in the
+    /// job is ignored.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub partial_unticked: BTreeMap<String, Vec<String>>,
 }
 
 impl Default for State {
@@ -84,6 +91,7 @@ impl Default for State {
             holds: BTreeMap::new(),
             bisync: BTreeMap::new(),
             batch_unticked: Vec::new(),
+            partial_unticked: BTreeMap::new(),
         }
     }
 }
@@ -256,13 +264,17 @@ pub fn clean_folder(folder: &str) -> String {
 
 impl State {
     /// Moves every `<old>/<id>` key in `runs`, `holds` and `bisync` to
-    /// `<new>/<id>`, renames the job in `batch_unticked`, and rewrites each
+    /// `<new>/<id>`, renames the job in `batch_unticked` and
+    /// `partial_unticked`, and rewrites each
     /// run record's log path from `logs/<old>/` to `logs/<new>/`. An entry already under the new name
     /// (left by a removed job of that name) is replaced, since the renamed
     /// job is the live one. Returns how many entries moved.
     pub fn rename_job(&mut self, old: &str, new: &str) -> usize {
         for name in self.batch_unticked.iter_mut().filter(|n| *n == old) {
             *name = new.to_string();
+        }
+        if let Some(ids) = self.partial_unticked.remove(old) {
+            self.partial_unticked.insert(new.to_string(), ids);
         }
         let old_logs = format!("logs/{old}/");
         for (key, run) in self.runs.iter_mut().chain(self.last_dry_run.iter_mut()) {
@@ -303,6 +315,7 @@ impl State {
         self.holds.retain(|k, _| !k.starts_with(&prefix));
         self.bisync.retain(|k, _| !k.starts_with(&prefix));
         self.batch_unticked.retain(|n| n != job);
+        self.partial_unticked.remove(job);
         before - count(self)
     }
 }
@@ -945,5 +958,36 @@ mod tests {
         assert_eq!(state.batch_unticked, ["engineering", "pictures"]);
         state.drop_job("engineering");
         assert_eq!(state.batch_unticked, ["pictures"]);
+    }
+
+    #[test]
+    fn unticked_destinations_are_kept_per_job_and_follow_the_jobs() {
+        let mut state = State::default();
+        let text = serde_json::to_string(&state).unwrap();
+        assert!(
+            !text.contains("partial_unticked"),
+            "written only when there are some"
+        );
+        // A state file from before milestone 17 has none.
+        let old: State = serde_json::from_str(r#"{"version":1,"batch_unticked":["a"]}"#).unwrap();
+        assert!(old.partial_unticked.is_empty());
+        state
+            .partial_unticked
+            .insert("records".into(), vec!["d-0002".into()]);
+        state
+            .partial_unticked
+            .insert("photos".into(), vec!["d-0007".into()]);
+        let text = serde_json::to_string(&state).unwrap();
+        assert!(
+            text.contains(r#""partial_unticked":{"photos":["d-0007"],"records":["d-0002"]}"#),
+            "{text}"
+        );
+        let back: State = serde_json::from_str(&text).unwrap();
+        assert_eq!(back, state);
+        state.rename_job("records", "archive");
+        assert_eq!(state.partial_unticked["archive"], ["d-0002"]);
+        assert!(!state.partial_unticked.contains_key("records"));
+        state.drop_job("photos");
+        assert!(!state.partial_unticked.contains_key("photos"));
     }
 }

@@ -1,6 +1,5 @@
 ---
 source: src/ui/jobs.rs
-assertion_line: 1343
 expression: value
 ---
 "                                                                                "
@@ -17,5 +16,5 @@ expression: value
 "        → work:Notes                      two-way   ✗ failed 3d ago · 2 held    "
 "                                                                                "
 "                                                                                "
-"  enter run · a add · e edit · d remove · j/k move · ? keys · q back            "
+"  enter run · p partial · a add · e edit · d remove · ? keys · q back           "
 "                                                                                "
