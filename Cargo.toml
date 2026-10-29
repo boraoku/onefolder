@@ -1,6 +1,6 @@
 [package]
 name = "onefolder"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 description = "Sync local folders to OneDrive and external drives with rclone, from a calm terminal app for macOS, Linux and WSL"
 publish = false
