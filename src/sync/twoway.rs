@@ -56,6 +56,35 @@ pub fn place(destination_type: &str) -> &'static str {
     }
 }
 
+/// How sending a file to the destination is said: uploaded to OneDrive,
+/// copied to a drive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SendWords {
+    /// "upload" or "copy".
+    pub verb: &'static str,
+    /// "uploading" or "copying".
+    pub verbing: &'static str,
+    /// "uploaded" or "copied".
+    pub verbed: &'static str,
+}
+
+/// The [`SendWords`] for a destination type.
+pub fn send_words(destination_type: &str) -> SendWords {
+    if destination_type == "onedrive" {
+        SendWords {
+            verb: "upload",
+            verbing: "uploading",
+            verbed: "uploaded",
+        }
+    } else {
+        SendWords {
+            verb: "copy",
+            verbing: "copying",
+            verbed: "copied",
+        }
+    }
+}
+
 /// Everything one destination's run carries between steps.
 struct Flow<'a> {
     run: &'a Run<'a>,

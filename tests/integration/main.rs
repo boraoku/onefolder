@@ -3542,7 +3542,7 @@ fn a_moved_file_is_moved_on_the_destination() {
         "{text}"
     );
     assert!(
-        text.contains("Would move: 1 file, 20 B (on the drive, no upload)"),
+        text.contains("Would move: 1 file, 20 B (on the drive, no copy)"),
         "{text}"
     );
     assert!(
@@ -3958,7 +3958,7 @@ fn a_failed_move_is_uploaded_instead() {
 }
 
 /// `--moves ask` with no terminal to ask on never moves: the file is
-/// uploaded again and the decision says it was not asked.
+/// copied again and the decision says it was not asked.
 #[test]
 fn moves_ask_without_a_terminal_never_moves() {
     if !enabled() {
@@ -5114,7 +5114,7 @@ fn yes_to_the_rest_of_a_batch_on_a_terminal() {
     p.wait("Continue? [Y/n/a]   n skips this destination · a yes to the rest of the batch");
     p.press(b"a");
     p.wait("Several jobs · job 2 of 2 · documents ✓");
-    p.wait("instead of uploading them again? [Y/n]");
+    p.wait("Move them on the drive instead of copying them again? [Y/n]");
     p.press(b"y");
     // No other question: the batch ends on its own.
     p.wait_printed("Several jobs   2 jobs · 2 destinations");

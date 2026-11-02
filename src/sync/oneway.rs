@@ -46,6 +46,7 @@ use super::reporter::{
     Question, Reporter, Step,
 };
 use super::summary::{Accumulator, Applied};
+use super::twoway::{send_words, SendWords};
 
 /// How many paths of each kind the preview lists.
 pub const PREVIEW_PATHS: usize = 10;
@@ -563,7 +564,10 @@ pub async fn run_destination(
                                 &mut log,
                                 serde_json::json!({
                                     "onefolder": "moves-not-checked",
-                                    "message": "these files could not be hashed, so they are uploaded",
+                                    "message": format!(
+                                        "these files could not be hashed, so they are {}",
+                                        send_words(&preview.destination_type).verbed
+                                    ),
                                     "files": found.unhashed.len(),
                                     "paths": found.unhashed.iter().take(20).collect::<Vec<_>>(),
                                 }),
@@ -791,10 +795,11 @@ fn decided(log: &mut Option<RunLog>, preview: &Preview, answer: MovesAnswer, by:
         "bytes": preview.move_bytes,
     });
     if by == DecidedBy::NotAsked {
-        value["message"] = serde_json::json!(
-            "--moves ask, and there is no terminal to ask on: the moved files are uploaded \
-             again, nothing is moved"
-        );
+        value["message"] = serde_json::json!(format!(
+            "--moves ask, and there is no terminal to ask on: the moved files are {} \
+             again, nothing is moved",
+            send_words(&preview.destination_type).verbed
+        ));
     }
     note_value(log, value);
 }
@@ -915,6 +920,7 @@ async fn run_moves(
     looking.to_move = preview.moves.len() as u64;
     reporter.looking(&looking);
     let place = super::twoway::place(&preview.destination_type);
+    let send = send_words(&preview.destination_type);
 
     let mut folders = Vec::new();
     let mut singles = Vec::new();
@@ -1034,7 +1040,7 @@ async fn run_moves(
                         }
                         Some(reason) => {
                             note_value(log, move_note("move-failed", &job, Some(&reason)));
-                            let error = move_error(&job, &reason, place);
+                            let error = move_error(&job, &reason, place, send);
                             reporter.file_error(&error);
                             done.errors.push(error);
                         }
@@ -1121,24 +1127,26 @@ fn move_note(what: &str, job: &MoveJob, reason: Option<&str>) -> serde_json::Val
 }
 
 /// The per-file error for a move that failed: what happened, in words,
-/// and that the copy uploads the file (or the folder's files) instead.
-fn move_error(job: &MoveJob, reason: &str, place: &str) -> FileError {
+/// and that the file (or the folder's files) is uploaded instead, or
+/// copied to a drive.
+fn move_error(job: &MoveJob, reason: &str, place: &str, send: SendWords) -> FileError {
     let why = if reason.contains("is a directory") {
         format!("a folder with that name is already on {place}")
     } else {
         reason.to_string()
     };
     let (path, what) = if job.folder {
-        (format!("{}/", job.to), "its files")
+        (format!("{}/", job.to), "its files are")
     } else {
-        (job.to.clone(), "it")
+        (job.to.clone(), "it is")
     };
     FileError {
         path,
         reason: format!(
-            "not moved from {}{} on {place} ({why}), so the copy uploads {what} instead",
+            "not moved from {}{} on {place} ({why}), so {what} {} instead",
             job.from,
             if job.folder { "/" } else { "" },
+            send.verbed,
         ),
     }
 }
@@ -2058,9 +2066,15 @@ mod tests {
             folder: false,
         };
         assert_eq!(
-            move_error(&job, "is a directory not a file", "OneDrive").reason,
+            move_error(
+                &job,
+                "is a directory not a file",
+                "OneDrive",
+                send_words("onedrive")
+            )
+            .reason,
             "not moved from Docs/report.pdf on OneDrive (a folder with that name is already \
-             on OneDrive), so the copy uploads it instead"
+             on OneDrive), so it is uploaded instead"
         );
         let folder = MoveJob {
             folder: true,
@@ -2068,11 +2082,11 @@ mod tests {
             to: "New".into(),
             ..job
         };
-        let e = move_error(&folder, "access denied", "the drive");
+        let e = move_error(&folder, "access denied", "the drive", send_words("local"));
         assert_eq!(e.path, "New/");
         assert_eq!(
             e.reason,
-            "not moved from Old/ on the drive (access denied), so the copy uploads its files instead"
+            "not moved from Old/ on the drive (access denied), so its files are copied instead"
         );
         assert_eq!(relative_to("Old/sub/a.txt", "Old"), "sub/a.txt");
     }

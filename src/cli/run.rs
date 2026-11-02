@@ -89,9 +89,9 @@ pub enum FolderDeletes {
 pub enum Moves {
     /// Ask (the default on a terminal)
     Ask,
-    /// Move them on the destination instead of uploading them again (the default with --yes)
+    /// Move them on the destination instead of copying them there again (the default with --yes)
     Move,
-    /// Upload them again under the new name; the old copies stay
+    /// Copy them again under the new name; the old copies stay
     Copy,
 }
 

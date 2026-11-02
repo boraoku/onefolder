@@ -6,6 +6,17 @@ versioning; the release workflow publishes a version when its tag (such as
 the Unreleased section to `## <version> - <date>`, which dist uses as the
 release notes.
 
+## Unreleased
+
+### Fixed
+
+- Moved files on a local drive are no longer said to be uploaded: the
+  question reads `Move them on the drive instead of copying them again?
+  [Y/n]`, `n copy again`, and the Moved row, the decision line, the
+  summary (`on the drive, no copy`) and the run log say copied. A
+  OneDrive destination still says uploaded. The `--moves` help no
+  longer mentions uploading.
+
 ## 0.4.0 - 2026-10-29
 
 ### Some of a job's destinations

@@ -83,7 +83,7 @@ pub fn summary_lines(s: &Summary, width: Option<usize>) -> Vec<Vec<Segment>> {
     if let Some(m) = s.moved.filter(|m| m.files > 0) {
         lines.push(vec![seg(
             format!(
-                "{}: {} {}, {} (on {}, no upload)",
+                "{}: {} {}, {} (on {}, no {})",
                 if s.dry_run { "Would move" } else { "Moved" },
                 thousands(m.files),
                 if m.files == 1 { "file" } else { "files" },
@@ -93,6 +93,7 @@ pub fn summary_lines(s: &Summary, width: Option<usize>) -> Vec<Vec<Segment>> {
                 } else {
                     remote
                 },
+                crate::sync::twoway::send_words(&s.destination_type).verb,
             ),
             Tone::Plain,
         )]);
@@ -586,7 +587,7 @@ Log: ~/.local/share/onefolder/logs/documents/d-7f3a/2026-10-13T094102.jsonl
         });
         let text = render_text(&s, false, None);
         assert!(
-            text.contains("Moved: 1,204 files, 3.1 GB (on the drive, no upload)\n"),
+            text.contains("Moved: 1,204 files, 3.1 GB (on the drive, no copy)\n"),
             "{text}"
         );
         // The deleted count is still 0: a move deletes nothing.

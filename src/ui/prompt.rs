@@ -19,7 +19,7 @@ use crate::sync::plan::{BigKind, Direction, Plan, ResyncOffer, ResyncReason};
 use crate::sync::reporter::{
     Answer, DecidedBy, DeletedFolder, FolderAnswer, MovesAnswer, Question, Where,
 };
-use crate::sync::twoway::place;
+use crate::sync::twoway::{place, send_words};
 use crate::ui::batch::{self, BatchLine};
 use crate::ui::progress::fit;
 use crate::ui::summary::format_bytes;
@@ -123,7 +123,7 @@ fn count_rows(p: &Preview) -> Vec<(&'static str, Vec<Segment>)> {
 }
 
 /// What the Moved row says about the moved files: found, to be moved, or
-/// to be uploaded again.
+/// to be uploaded (or copied) again.
 pub fn moved_note(p: &Preview) -> String {
     match p.moves_choice {
         MovesChoice::Undecided => format!(
@@ -131,15 +131,16 @@ pub fn moved_note(p: &Preview) -> String {
             place(&p.destination_type)
         ),
         MovesChoice::Move => "will be moved".to_string(),
-        MovesChoice::Upload => "will be uploaded again".to_string(),
+        MovesChoice::Upload => format!("will be {} again", send_words(&p.destination_type).verbed),
     }
 }
 
 /// The question about moved files.
 pub fn moves_question(p: &Preview) -> String {
     format!(
-        "  Move them on {} instead of uploading them again? [Y/n] ",
-        place(&p.destination_type)
+        "  Move them on {} instead of {} them again? [Y/n] ",
+        place(&p.destination_type),
+        send_words(&p.destination_type).verbing
     )
 }
 
@@ -158,6 +159,7 @@ pub fn moves_answer_lines(p: &Preview) -> Vec<Vec<Segment>> {
 pub fn moves_decision(p: &Preview, answer: MovesAnswer, by: DecidedBy) -> String {
     let n = p.moves.len() as u64;
     let place = place(&p.destination_type);
+    let sent = send_words(&p.destination_type).verbed;
     let files = if n == 1 { "file" } else { "files" };
     let (will, stays) = match (p.dry_run, n == 1) {
         (true, _) => ("would be", "would stay"),
@@ -166,11 +168,11 @@ pub fn moves_decision(p: &Preview, answer: MovesAnswer, by: DecidedBy) -> String
     };
     let what = match answer {
         MovesAnswer::Move => format!(
-            "{} moved {files}: {will} moved on {place}, not uploaded again",
+            "{} moved {files}: {will} moved on {place}, not {sent} again",
             thousands(n)
         ),
         MovesAnswer::Copy => format!(
-            "{} moved {files}: {will} uploaded again, the old {} {stays} on {place}",
+            "{} moved {files}: {will} {sent} again, the old {} {stays} on {place}",
             thousands(n),
             if n == 1 { "copy" } else { "copies" }
         ),
@@ -1401,7 +1403,8 @@ pub struct PreviewPrompt {
     /// The whole-lists view, while it is open.
     view: Option<FullView>,
     /// What the hints say no does, when it is not "skip this
-    /// destination" (the move question: `n upload again`).
+    /// destination" (the move question: `n upload again`, or `n copy
+    /// again` to a drive).
     pub no_hint: Option<String>,
     /// Where the batch has got to, on the top line; `None` for one job.
     pub batch: Option<BatchLine>,
@@ -1463,13 +1466,17 @@ impl PreviewPrompt {
     }
 
     /// The question about moved files, over the preview: yes moves them,
-    /// no (also Esc and q) uploads them again; Ctrl-C stops the run.
+    /// no (also Esc and q) uploads (or copies) them again; Ctrl-C stops
+    /// the run.
     pub fn moves(title: String, preview: &Preview) -> Self {
         let (body, full) = preview_screen(preview);
         let mut prompt =
             PreviewPrompt::with_lines(title, body, moves_question(preview), Answer::Yes, "move")
                 .with_full_lists(full);
-        prompt.no_hint = Some("n upload again".to_string());
+        prompt.no_hint = Some(format!(
+            "n {} again",
+            send_words(&preview.destination_type).verb
+        ));
         prompt
     }
 
@@ -2318,7 +2325,7 @@ pub mod tests {
         assert!(render_text(&local, false).contains("already on the drive under another name"));
         assert_eq!(
             moves_question(&local),
-            "  Move them on the drive instead of uploading them again? [Y/n] "
+            "  Move them on the drive instead of copying them again? [Y/n] "
         );
         assert_eq!(
             question(&Question::Moves(&p), "onedrive"),
@@ -2365,6 +2372,10 @@ pub mod tests {
         );
         assert!(text.contains("  Nothing will be deleted on the destination.\n"));
         assert!(text.contains("  1,221 files only on the destination are left alone.\n"));
+        // To a drive nothing is uploaded: it is copied again.
+        let mut local = p.clone();
+        local.destination_type = "local".into();
+        assert_eq!(moved_note(&local), "will be copied again");
         assert_eq!(p.new.len(), 37 + 1209);
         assert_eq!(p.new_bytes, 412_600_000 + p.move_bytes);
         // And back: the same as before, whatever the order of answers.
@@ -2407,12 +2418,12 @@ pub mod tests {
         one.destination_type = "local".into();
         assert_eq!(
             moves_decision(&one, MovesAnswer::Move, DecidedBy::Default),
-            "1 moved file: will be moved on the drive, not uploaded again   \
+            "1 moved file: will be moved on the drive, not copied again   \
              (the default with --yes or without a terminal)"
         );
         assert_eq!(
             moves_decision(&one, MovesAnswer::Copy, DecidedBy::Asked),
-            "1 moved file: will be uploaded again, the old copy stays on the drive"
+            "1 moved file: will be copied again, the old copy stays on the drive"
         );
     }
 
@@ -2440,6 +2451,18 @@ pub mod tests {
             let mut prompt = PreviewPrompt::moves("Run documents".into(), &p);
             assert_eq!(prompt.handle_key(key(k)), Some(answer), "{k:?}");
         }
+        // To a drive, no copies again.
+        let mut local = p.clone();
+        local.destination_type = "local".into();
+        let prompt = PreviewPrompt::moves("Run documents".into(), &local);
+        assert_eq!(
+            prompt.hints(),
+            "y/enter move · n copy again · l whole list · ↑↓ scroll"
+        );
+        assert_eq!(
+            prompt.question,
+            "  Move them on the drive instead of copying them again? [Y/n] "
+        );
         let mut prompt = PreviewPrompt::moves("Run documents".into(), &p);
         let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
         assert_eq!(prompt.handle_key(ctrl_c), Some(Answer::No));

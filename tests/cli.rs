@@ -1885,7 +1885,7 @@ fn run_json_dry_run_reports_progress() {
 }
 
 /// `--moves ask` with output piped (no terminal to ask on) never moves:
-/// the moved file is uploaded again, the old copy stays, and the output
+/// the moved file is copied again, the old copy stays, and the output
 /// says why. Needs a real rclone (local folders only); skipped without
 /// one, since the CI job running this file has none (the integration
 /// suite covers it there).
@@ -1954,13 +1954,13 @@ fn moves_ask_without_a_terminal_uploads_again() {
     assert_eq!(code, Some(0), "{text}");
     assert!(
         text.contains(
-            "1 moved file: will be uploaded again, the old copy stays on the drive   \
+            "1 moved file: will be copied again, the old copy stays on the drive   \
              (--moves ask, and there is no terminal to ask on)"
         ),
         "{text}"
     );
-    assert!(text.contains("will be uploaded again"), "{text}");
+    assert!(text.contains("will be copied again"), "{text}");
     assert!(!text.contains("Moved:"), "{text}");
     assert!(dst.join("Docs/report.pdf").exists(), "the old copy stays");
-    assert!(dst.join("Archive/report.pdf").exists(), "uploaded again");
+    assert!(dst.join("Archive/report.pdf").exists(), "copied again");
 }
