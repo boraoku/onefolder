@@ -771,11 +771,16 @@ fn destinations(
         .destinations
         .iter()
         .zip(&view.destinations)
-        .map(|(d, v)| DestChoice {
-            id: d.id().to_string(),
-            target: v.target.clone(),
-            mode: v.mode,
-            note: crate::ui::jobs::status(v, now),
+        .map(|(d, v)| {
+            let note = crate::ui::jobs::status(v, now);
+            let short = crate::ui::jobs::status_short(v, now);
+            DestChoice {
+                id: d.id().to_string(),
+                target: v.target.clone(),
+                mode: v.mode,
+                short_note: (short != note).then_some(short),
+                note,
+            }
         })
         .collect();
     let unticked = state

@@ -50,8 +50,12 @@ pub struct DestChoice {
     /// As shown: `work:Backups/Documents` or a local path.
     pub target: String,
     pub mode: Mode,
-    /// What the Jobs list says about it: `✓ 2h ago`, `◎ not mounted`.
+    /// What the Jobs list says about it: `✓ 2h ago`, `◎ not mounted (6d ago)`.
     pub note: Segment,
+    /// The note without the time after a drive not mounted (`◎ not
+    /// mounted`), for a line too narrow for the whole of it; `None` when
+    /// there is nothing to leave out.
+    pub short_note: Option<Segment>,
 }
 
 /// The checklist of a job's destinations: tick the ones to run, then
@@ -177,7 +181,13 @@ impl ChooseDestinations {
                 vec![seg(format!("    {box_} {target}"), Tone::Plain)]
             };
             line.push(seg(format!("{:<10}", dest.mode.as_str()), Tone::Plain));
-            line.push(dest.note.clone());
+            // The time after a drive not mounted goes before the note is cut.
+            let used: usize = line.iter().map(|(t, _)| super::width(t)).sum();
+            let note = match (&dest.short_note, max) {
+                (Some(short), Some(m)) if used + super::width(&dest.note.0) > m => short,
+                _ => &dest.note,
+            };
+            line.push(note.clone());
             lines.push(cut(line, max));
         }
         lines.push(Vec::new());
@@ -290,6 +300,9 @@ mod tests {
             target: target.into(),
             mode,
             note: (note.into(), tone),
+            short_note: note
+                .split_once(" (")
+                .map(|(short, _)| (short.to_string(), tone)),
         };
         vec![
             dest(
@@ -303,7 +316,7 @@ mod tests {
                 "d-0002",
                 "/Volumes/T7 Shield/Records",
                 Mode::OneWay,
-                "◎ not mounted",
+                "◎ not mounted (6d ago)",
                 Tone::Warning,
             ),
             dest(
@@ -341,6 +354,11 @@ mod tests {
             assert!(w < 50, "{}", text(std::slice::from_ref(line)));
         }
         snapshot("partial_choose_50", text(&narrow));
+        // The time after `not mounted` goes before the note is cut.
+        c.width = Some(56);
+        let mid = text(&c.segments());
+        assert!(mid.contains("one-way   ◎ not mounted\n"), "{mid}");
+        c.width = Some(80);
         // Space ticks the row under the cursor: all ticked is a whole run.
         assert_eq!(c.handle_key(key(KeyCode::Char(' '))), None);
         assert_eq!(c.ticked, [true, true, true]);

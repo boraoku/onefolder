@@ -9,7 +9,7 @@ expression: value
 "               │enter    run the job, or several                │               "
 "  ➤ documents  │p        run some of its destinations           │               "
 "        → work:│a        add a job                              │               "
-"        → /Volu│e        edit the job                           │               "
+"        → /Volu│e        edit the job                           │ (yesterday)   "
 "    photos     │d        remove the job (asks first)            │               "
 "        → perso│j  k     move the job down or up the list       │               "
 "    notes      │/        filter by name, folder or destination  │               "

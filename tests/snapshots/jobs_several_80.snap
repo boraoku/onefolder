@@ -1,6 +1,5 @@
 ---
 source: src/ui/jobs.rs
-assertion_line: 1343
 expression: value
 ---
 "                                                                                "
@@ -10,7 +9,7 @@ expression: value
 "                                                                                "
 "    documents      ~/Documents                                                  "
 "        → work:Backups/Documents          two-way   ✓ 2h ago                    "
-"        → /Volumes/Backup/Documents       one-way   ◎ not mounted               "
+"        → /Volumes/Backup/Documents       one-way   ◎ not mounted (yesterday)   "
 "    photos         ~/Pictures/Photos                                            "
 "        → personal:Photos                 one-way   ✓ yesterday                 "
 "    notes          ~/Notes                                                      "

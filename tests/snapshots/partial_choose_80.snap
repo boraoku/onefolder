@@ -5,7 +5,7 @@ expression: value
   Choose destinations for records   ~/Records
 
     [x] boramektup:Records           one-way   ✓ 2h ago
-  ➤ [ ] /Volumes/T7 Shield/Records   one-way   ◎ not mounted
+  ➤ [ ] /Volumes/T7 Shield/Records   one-way   ◎ not mounted (6d ago)
     [x] work:Archive/Records         two-way   ✗ needs resync 3d ago
 
   2 of 3 destinations will run, one after another

@@ -6,7 +6,7 @@ Jobs  3 jobs · 4 destinations
 
   documents      ~/Library/Mobile Documents/com~apple~CloudDocs/Projects/Clients/2026
       → work:Backups/Very long folder name/Another long folder/Documents/2026  two-way   ✓ 2h ago
-      → /Volumes/Backup/Archive/Deeply/Nested/Folder/Structure/Documents       one-way   ◎ not mounted
+      → /Volumes/Backup/Archive/Deeply/Nested/Folder/Structure/Documents       one-way   ◎ not mounted (yesterday)
   photos         ~/Pictures/Photos
       → personal:Photos                                                        one-way   ✓ yesterday
   notes          ~/Notes

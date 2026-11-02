@@ -393,7 +393,7 @@ Jobs  3 jobs · 4 destinations
 
 ➤ documents      ~/Documents
       → work:Backups/Documents          two-way   ✓ 2h ago
-      → /Volumes/Backup/Documents       one-way   ◎ not mounted
+      → /Volumes/Backup/Documents       one-way   ◎ not mounted (yesterday)
   photos         ~/Pictures/Photos
       → personal:Photos                 one-way   ✓ yesterday
   notes          ~/Notes
@@ -401,6 +401,8 @@ Jobs  3 jobs · 4 destinations
 
 enter run · a add · e edit · d remove · j/k move · ? keys · q back
 ```
+
+A destination whose drive is not mounted (or not answering) keeps the warning tone and `◎` and adds when it last ran for real in the list's words, `◎ not mounted (yesterday)`; with no real run (or no readable time) it is plain `◎ not mounted`, and a newer dry run is not mentioned, as the `✓` column ignores dry runs. The text comes from `ui::jobs::status`, so `jobs list`, the Jobs screen and `Choose destinations` agree; when the column is too narrow for it (`status_within`, and `short_note` in `Choose destinations`) the time is left out before anything is cut. `jobs list --json` is unchanged.
 
 **Run progress** (`onefolder run documents`)
 

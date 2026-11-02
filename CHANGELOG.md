@@ -6,6 +6,18 @@ versioning; the release workflow publishes a version when its tag (such as
 the Unreleased section to `## <version> - <date>`, which dist uses as the
 release notes.
 
+## Unreleased
+
+### Changed
+
+- A destination whose drive is not mounted no longer hides when it last
+  synced: the Jobs list, `onefolder jobs list` and `Choose destinations`
+  read `◎ not mounted (6d ago)`, with the last real run in the list's
+  usual words (`◎ not answering (6d ago)` for a hanging network drive),
+  and plain `◎ not mounted` for a destination never run. On a narrow
+  terminal the time is left out before the status is cut. `jobs list
+  --json` is unchanged.
+
 ## 0.4.1 - 2026-11-02
 
 ### Fixed

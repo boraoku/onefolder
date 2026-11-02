@@ -195,7 +195,7 @@ In the form, the folder fields (the source, a local destination's folder and a O
 
 When a local destination is on an external drive, OneFolder records the drive's identity (mount point, name and UUID) at this point. See [External drives](#external-drives).
 
-On a terminal, `onefolder jobs` (or **Jobs** in the menu) opens the jobs list (`a` add, `e` edit, `d` remove, Enter runs, `p` runs some of a job's destinations, `/` filters, `?` shows the keys). On this list `↑`/`↓` move the cursor, and `j` and `k` move the highlighted job down or up the list (Shift+`j`/`k` too); the new order is saved to the config straight away, comments and all, and every list of jobs and every batch follows it. Reordering waits until a filter is cleared. After a run started from the list, the list comes back with fresh statuses and the cursor where it was. `jobs list` prints it instead, with `· hidden files copied` after the source of a job that copies them (`jobs list --json` has `copy_hidden` for every job). `onefolder jobs edit documents` opens the form again; `jobs edit --help` lists the flags for editing from scripts.
+On a terminal, `onefolder jobs` (or **Jobs** in the menu) opens the jobs list (`a` add, `e` edit, `d` remove, Enter runs, `p` runs some of a job's destinations, `/` filters, `?` shows the keys). On this list `↑`/`↓` move the cursor, and `j` and `k` move the highlighted job down or up the list (Shift+`j`/`k` too); the new order is saved to the config straight away, comments and all, and every list of jobs and every batch follows it. Reordering waits until a filter is cleared. After a run started from the list, the list comes back with fresh statuses and the cursor where it was. A destination whose drive is unplugged reads `◎ not mounted (3d ago)`, with when it last ran for real (`◎ not answering (3d ago)` for a hanging network drive; just `◎ not mounted` if it never has, and the time is left out first on a narrow terminal). `jobs list` prints it instead, with `· hidden files copied` after the source of a job that copies them (`jobs list --json` has `copy_hidden` for every job). `onefolder jobs edit documents` opens the form again; `jobs edit --help` lists the flags for editing from scripts.
 
 ### Run
 
@@ -247,7 +247,7 @@ Where Enter runs a job (the jobs list, and the `Run which job?` list of `onefold
   Choose destinations for records   ~/Records
 
     [x] boramektup:Records           one-way   ✓ 2h ago
-  ➤ [ ] /Volumes/T7 Shield/Records   one-way   ◎ not mounted
+  ➤ [ ] /Volumes/T7 Shield/Records   one-way   ◎ not mounted (3d ago)
     [x] work:Archive/Records         two-way   ✗ needs resync 3d ago
 
   2 of 3 destinations will run, one after another

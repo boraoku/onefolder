@@ -87,15 +87,46 @@ fn plural(n: usize, word: &str) -> String {
     }
 }
 
-/// The status column of a destination.
+/// The status column of a destination. A drive not mounted (or not
+/// answering) still says when the destination last ran for real: `◎ not
+/// mounted (6d ago)`; plain `◎ not mounted` when it never has.
 pub fn status(d: &DestinationView, now: i64) -> Segment {
+    status_with(d, now, true)
+}
+
+/// The status with the time after a drive not mounted or not answering
+/// left out (`◎ not mounted`), for a column too narrow for the whole of
+/// it; the same as [`status`] for any other destination.
+pub fn status_short(d: &DestinationView, now: i64) -> Segment {
+    status_with(d, now, false)
+}
+
+/// [`status`] when it fits in `room` columns (or there is no limit), else
+/// [`status_short`]. The rest is never cut here.
+pub fn status_within(d: &DestinationView, now: i64, room: Option<usize>) -> Segment {
+    let full = status(d, now);
+    match room {
+        Some(room) if super::width(&full.0) > room => status_short(d, now),
+        _ => full,
+    }
+}
+
+fn status_with(d: &DestinationView, now: i64, drive_time: bool) -> Segment {
     let mut text;
     let tone;
+    // When a destination whose drive is away last ran for real.
+    let last = || {
+        d.last_run
+            .as_ref()
+            .and_then(|r| r.finished)
+            .filter(|_| drive_time)
+            .map_or(String::new(), |t| format!(" ({})", ago(t, now)))
+    };
     if d.not_answering {
-        text = format!("{} not answering", theme::SKIPPED);
+        text = format!("{} not answering{}", theme::SKIPPED, last());
         tone = Tone::Warning;
     } else if !d.mounted {
-        text = format!("{} not mounted", theme::SKIPPED);
+        text = format!("{} not mounted{}", theme::SKIPPED, last());
         tone = Tone::Warning;
     } else if let Some(run) = &d.last_run {
         let when = run.finished.map(|t| ago(t, now)).unwrap_or_default();
@@ -245,6 +276,9 @@ pub fn list_lines(
                 Tone::Warning,
             )]);
         }
+        // What is left for the status once the indent, the destination
+        // and the mode are taken.
+        let status_room = width.map(|w| w.saturating_sub(8 + target_w + 10));
         for d in &job.destinations {
             lines.push(vec![
                 (
@@ -256,7 +290,7 @@ pub fn list_lines(
                     Tone::Plain,
                 ),
                 (format!("{:<10}", d.mode.as_str()), Tone::Plain),
-                status(d, now),
+                status_within(d, now, status_room),
             ]);
         }
     }
@@ -886,7 +920,7 @@ mod tests {
              \n\
              \x20 documents      ~/Documents\n\
              \x20     → work:Backups/Documents          two-way   ✓ 2h ago\n\
-             \x20     → /Volumes/Backup/Documents       one-way   ◎ not mounted\n\
+             \x20     → /Volumes/Backup/Documents       one-way   ◎ not mounted (yesterday)\n\
              \x20 photos         ~/Pictures/Photos\n\
              \x20     → personal:Photos                 one-way   ✓ yesterday\n\
              \x20 notes          ~/Notes\n\
@@ -1009,6 +1043,78 @@ mod tests {
         jobs[1].destinations[0].last_run = None;
         let text = render_text(&jobs, NOW, false, None);
         assert!(text.contains("never run · dry run yesterday"), "{text}");
+    }
+
+    #[test]
+    fn a_drive_not_mounted_says_when_it_last_ran() {
+        let mut d = mockup()[0].destinations[1].clone();
+        // A past real run: its time in brackets, in the warning tone.
+        d.last_run.as_mut().unwrap().finished = Some(NOW - 6 * 86_400);
+        assert_eq!(
+            status(&d, NOW),
+            ("◎ not mounted (6d ago)".to_string(), Tone::Warning)
+        );
+        assert_eq!(
+            status_short(&d, NOW),
+            ("◎ not mounted".to_string(), Tone::Warning)
+        );
+        // Whatever its outcome.
+        d.last_run.as_mut().unwrap().outcome = Outcome::Failed;
+        assert_eq!(status(&d, NOW).0, "◎ not mounted (6d ago)");
+        // A dry run is not a real run, and is not mentioned.
+        d.last_dry_run = Some(LastRun {
+            outcome: Outcome::Ok,
+            dry_run: true,
+            finished: Some(NOW - 600),
+        });
+        assert_eq!(status(&d, NOW).0, "◎ not mounted (6d ago)");
+        // Never run for real, or a time that cannot be read: no brackets.
+        d.last_run.as_mut().unwrap().finished = None;
+        assert_eq!(status(&d, NOW).0, "◎ not mounted");
+        d.last_run = None;
+        assert_eq!(
+            status(&d, NOW),
+            ("◎ not mounted".to_string(), Tone::Warning)
+        );
+    }
+
+    #[test]
+    fn a_drive_not_answering_says_when_it_last_ran() {
+        let mut d = mockup()[0].destinations[1].clone();
+        // As the jobs list builds it: mounted, but its mount point hangs.
+        d.mounted = true;
+        d.not_answering = true;
+        d.last_run.as_mut().unwrap().finished = Some(NOW - 2 * 86_400);
+        assert_eq!(
+            status(&d, NOW),
+            ("◎ not answering (2d ago)".to_string(), Tone::Warning)
+        );
+        assert_eq!(status_short(&d, NOW).0, "◎ not answering");
+        d.last_run = None;
+        assert_eq!(status(&d, NOW).0, "◎ not answering");
+    }
+
+    #[test]
+    fn the_time_after_not_mounted_goes_first_when_narrow() {
+        let d = &mockup()[0].destinations[1];
+        assert_eq!(status_within(d, NOW, None).0, "◎ not mounted (yesterday)");
+        assert_eq!(
+            status_within(d, NOW, Some(25)).0,
+            "◎ not mounted (yesterday)"
+        );
+        assert_eq!(status_within(d, NOW, Some(24)).0, "◎ not mounted");
+        // Other statuses are left whole.
+        let ok = &mockup()[1].destinations[0];
+        assert_eq!(status_within(ok, NOW, Some(3)).0, "✓ yesterday");
+        // In the list: whole at 80 columns, without the time at 60.
+        let text = render_text(&mockup(), NOW, false, Some(80));
+        assert!(
+            text.contains("one-way   ◎ not mounted (yesterday)\n"),
+            "{text}"
+        );
+        let text = render_text(&mockup(), NOW, false, Some(60));
+        assert!(text.contains("one-way   ◎ not mounted\n"), "{text}");
+        assert_fits(&text, 60);
     }
 
     #[test]
