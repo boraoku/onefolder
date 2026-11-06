@@ -129,10 +129,22 @@ jobs:
           & $of status
           Check 'status'
           & $of doctor
-      - name: Ctrl-C stops rclone cleanly (one-way and two-way)
+      # Twice: with Chocolatey's rclone.exe, a launcher (a shim) that starts
+      # the real rclone as its child, and with the real rclone.exe itself.
+      - name: Ctrl-C stops rclone cleanly (through Chocolatey's shim)
+        if: ${{ !cancelled() }}
         env:
           ONEFOLDER_INTEGRATION: "1"
-        run: cargo test --test windows -- --nocapture
+        run: cargo test --test windows -- --nocapture --test-threads 1
+      - name: Ctrl-C stops rclone cleanly (the real rclone.exe)
+        if: ${{ !cancelled() }}
+        env:
+          ONEFOLDER_INTEGRATION: "1"
+        run: |
+          $real = Get-ChildItem "$env:ChocolateyInstall\lib\rclone" -Recurse -Filter rclone.exe | Select-Object -First 1
+          Write-Output "real rclone: $($real.FullName)"
+          $env:PATH = "$($real.DirectoryName);$env:PATH"
+          cargo test --test windows -- --nocapture --test-threads 1
 
   # dist plans every target (macOS and Linux) from one machine.
   release-plan:

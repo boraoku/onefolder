@@ -228,11 +228,35 @@ fn ctrl_c_stops_a_two_way_sync_cleanly() {
         !log.contains("lock-removed"),
         "bisync was killed, not stopped:\n{log}"
     );
-    let locks: Vec<PathBuf> = walk(&w.path("data/bisync"))
-        .into_iter()
-        .filter(|p| p.extension().is_some_and(|e| e == "lck"))
-        .collect();
-    assert!(locks.is_empty(), "locks left: {locks:?}");
+    let locks = || -> Vec<PathBuf> {
+        walk(&w.path("data/bisync"))
+            .into_iter()
+            .filter(|p| p.extension().is_some_and(|e| e == "lck"))
+            .collect()
+    };
+    let left = locks();
+    if !left.is_empty() {
+        // What is still running, and whether the lock goes by itself (an
+        // rclone still stopping, out of OneFolder's sight) or stays (an
+        // rclone that ended without its clean shutdown).
+        println!("--- rclone processes after OneFolder ended:\n{}", rclones());
+        let since = Instant::now();
+        while !locks().is_empty() && since.elapsed() < Duration::from_secs(60) {
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        println!(
+            "--- the lock {} after {:?}; rclone processes now:\n{}",
+            if locks().is_empty() { "went" } else { "stayed" },
+            since.elapsed(),
+            rclones()
+        );
+        let tail: Vec<&str> = log.lines().rev().take(25).collect();
+        println!(
+            "--- the run log's last lines:\n{}",
+            tail.into_iter().rev().collect::<Vec<_>>().join("\n")
+        );
+    }
+    assert!(left.is_empty(), "locks left: {left:?}");
 
     // The next run picks up where it stopped, with no resync.
     w.run_ok("the run after");
@@ -240,6 +264,15 @@ fn ctrl_c_stops_a_two_way_sync_cleanly() {
         fs::metadata(w.path("dst/big.bin")).unwrap().len(),
         BIG as u64
     );
+}
+
+/// The running rclone processes, as `tasklist` lists them.
+fn rclones() -> String {
+    Command::new("tasklist")
+        .args(["/FI", "IMAGENAME eq rclone.exe", "/FO", "LIST"])
+        .output()
+        .map(|o| text(&o.stdout))
+        .unwrap_or_default()
 }
 
 /// Every file under `dir`.
