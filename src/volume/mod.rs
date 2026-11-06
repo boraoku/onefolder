@@ -808,7 +808,7 @@ pub fn resolve(path: &Path) -> PathBuf {
             _ => None,
         })
         .collect();
-    let mut out = PathBuf::from("/");
+    let mut out = root_of(path);
     let mut links = 0;
     while let Some(part) = pending.pop() {
         if part == ".." {
@@ -820,7 +820,7 @@ pub fn resolve(path: &Path) -> PathBuf {
             Ok(target) if links < 40 => {
                 links += 1;
                 if target.is_absolute() {
-                    out = PathBuf::from("/");
+                    out = root_of(&target);
                 }
                 for c in target.components().rev() {
                     match c {
@@ -834,6 +834,23 @@ pub fn resolve(path: &Path) -> PathBuf {
         }
     }
     out
+}
+
+/// The root an absolute path starts from: `/`, or on Windows its drive or
+/// share as well (`D:\`, `\\nas\share\`).
+fn root_of(path: &Path) -> PathBuf {
+    let mut root = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => root.push(prefix.as_os_str()),
+            Component::RootDir => root.push(Component::RootDir),
+            _ => break,
+        }
+    }
+    if root.as_os_str().is_empty() {
+        root.push(Component::RootDir);
+    }
+    root
 }
 
 /// True when a path is on a drive path (see [`is_under_drives`]) as
@@ -1287,7 +1304,7 @@ async fn volume_label(mount: &Mount) -> String {
     let mount_point = mount.mount_point.as_str();
     let startup = is_startup(mount_point, &mount.fstype);
     if startup && host::os() != host::Os::Mac {
-        return if mount_point == "/" {
+        return if mount_point == "/" || host::os() == host::Os::Windows {
             host::words().system_disk.to_string()
         } else {
             format!("{mount_point}, part of the system disk")
