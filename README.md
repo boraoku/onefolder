@@ -48,7 +48,7 @@ Each GitHub release also carries a shell installer, for macOS, Linux and WSL. It
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/boraoku/onefolder/releases/latest/download/onefolder-installer.sh | sh
 ```
 
-On Windows itself, the PowerShell installer does the same, putting `onefolder.exe` in `~\.cargo\bin`; each release also has `onefolder-x86_64-pc-windows-msvc.zip` to unpack by hand. The binary is not code-signed, so a managed PC whose security rules block unknown programs may refuse to run it until IT allows it.
+On Windows itself, the PowerShell installer does the same, putting `onefolder.exe` in `~\.cargo\bin`; each release also has `onefolder-x86_64-pc-windows-msvc.zip` to unpack by hand.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/boraoku/onefolder/releases/latest/download/onefolder-installer.ps1 | iex"
