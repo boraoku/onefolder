@@ -16,6 +16,10 @@
 //! multi-destination sequencing, the volume check, the run lock and
 //! `status`. The real unplugged drive is demonstrated by
 //! `scripts/demo-unplugged-drive.sh`, which needs a disk image.
+//!
+//! Unix only for now: the tests fake rclone with `/bin/sh` scripts, build
+//! `:`-separated PATHs and change mode bits.
+#![cfg(unix)]
 
 use std::collections::BTreeMap;
 use std::fs;

@@ -1922,7 +1922,9 @@ mod tests {
     }
 
     /// A file that can neither be saved nor read again: the move is undone
-    /// on the screen, with the reason.
+    /// on the screen, with the reason. Unix only: the file is made
+    /// unreadable by its mode bits.
+    #[cfg(unix)]
     #[test]
     fn a_move_that_cannot_be_saved_or_reloaded_is_undone() {
         use std::os::unix::fs::PermissionsExt;
@@ -2147,31 +2149,35 @@ mod tests {
         );
         assert!(move_job(&paths, "nope", true).is_err());
         // A file that cannot be saved: the screen says so and shows the
-        // order on disk.
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o500)).unwrap();
-        let mut screen = screen::Screen::new(
-            job_views(&load(&paths).unwrap().config.jobs, &State::default()),
-            0,
-        );
-        let Some(screen::Action::Move { name, down }) = screen.handle_key(key) else {
-            panic!("a move");
-        };
-        assert_eq!(screen.jobs[0].name, "photos", "moved on the screen");
-        save_move(&paths, &mut screen, &name, down);
-        fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o700)).unwrap();
-        let (message, tone) = screen.message.clone().expect("a message");
-        assert_eq!(tone, Tone::Error);
-        assert!(message.contains("could not save"), "{message}");
-        assert_eq!(
-            screen
-                .jobs
-                .iter()
-                .map(|j| j.name.as_str())
-                .collect::<Vec<_>>(),
-            ["records", "photos", "documents"]
-        );
-        assert_eq!(order(&paths), ["records", "photos", "documents"]);
+        // order on disk. Unix only: it takes write permission away from
+        // the folder by its mode bits.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o500)).unwrap();
+            let mut screen = screen::Screen::new(
+                job_views(&load(&paths).unwrap().config.jobs, &State::default()),
+                0,
+            );
+            let Some(screen::Action::Move { name, down }) = screen.handle_key(key) else {
+                panic!("a move");
+            };
+            assert_eq!(screen.jobs[0].name, "photos", "moved on the screen");
+            save_move(&paths, &mut screen, &name, down);
+            fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o700)).unwrap();
+            let (message, tone) = screen.message.clone().expect("a message");
+            assert_eq!(tone, Tone::Error);
+            assert!(message.contains("could not save"), "{message}");
+            assert_eq!(
+                screen
+                    .jobs
+                    .iter()
+                    .map(|j| j.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["records", "photos", "documents"]
+            );
+            assert_eq!(order(&paths), ["records", "photos", "documents"]);
+        }
     }
 
     #[test]

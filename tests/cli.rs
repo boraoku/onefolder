@@ -13,7 +13,10 @@ use tempfile::TempDir;
 /// macOS names the Mac and Homebrew; Linux names "this computer" and
 /// rclone's own installer (these tests keep `brew` off PATH).
 const MAC: bool = cfg!(target_os = "macos");
+// Used only by tests that fake rclone with `/bin/sh` scripts, so Unix only.
+#[cfg(unix)]
 const THIS_COMPUTER: &str = if MAC { "this Mac" } else { "this computer" };
+#[cfg(unix)]
 const SYSTEM_DISK: &str = if MAC {
     "the startup disk"
 } else {
@@ -24,6 +27,7 @@ const INSTALL: &str = if MAC {
 } else {
     "install it from https://rclone.org/install/ (or brew install rclone with Homebrew)"
 };
+#[cfg(unix)]
 const UPDATE: &str = if MAC {
     "update it with: brew upgrade rclone"
 } else {
@@ -742,6 +746,7 @@ fn batch_refusals() {
     assert!(!data_has_state(&home), "nothing was recorded");
 }
 
+#[cfg(unix)]
 fn data_has_state(home: &TempDir) -> bool {
     home.path().join("data/state.json").exists()
 }
