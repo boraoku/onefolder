@@ -3,8 +3,9 @@
 //! folder. The interface takes a path and returns an [`Identity`]; the
 //! macOS implementation (statfs and `diskutil info -plist`) lives in
 //! `macos.rs` and the Linux one (`/proc/self/mountinfo`, `lsblk`, and
-//! PowerShell for Windows drives under WSL) in `linux.rs`, each behind
-//! `cfg(target_os)`; other platforms get a stub that says the check is not
+//! PowerShell for Windows drives under WSL) in `linux.rs`, and the Windows
+//! one (the Win32 volume calls, the volume GUID) in `windows.rs`, each
+//! behind `cfg`; other platforms get a stub that says the check is not
 //! supported there. Where drives are mounted and which mount points are
 //! the system disk come from [`crate::platform`].
 //!
@@ -22,6 +23,10 @@ mod macos;
 use linux as platform;
 #[cfg(target_os = "macos")]
 use macos as platform;
+#[cfg(windows)]
+mod windows;
+#[cfg(windows)]
+use windows as platform;
 
 use std::fmt;
 use std::future::Future;
@@ -876,6 +881,8 @@ pub struct Found {
 /// names, then Linux's.
 const NETWORK_FSTYPES: &[&str] = &[
     "smbfs",
+    // A network drive or share on Windows itself.
+    "smb",
     "afpfs",
     "nfs",
     "webdav",
@@ -994,7 +1001,9 @@ fn is_network(mount: &Mount) -> bool {
         let mut chars = mount.device.chars();
         matches!((chars.next(), chars.next()), (Some(c), Some(':')) if c.is_ascii_alphabetic())
     };
-    let not_block = host::os() != host::Os::Mac
+    // On Windows itself every local volume has a GUID; a network drive is
+    // told apart by its file system type.
+    let not_block = !matches!(host::os(), host::Os::Mac | host::Os::Windows)
         && !mount.device.starts_with("/dev/")
         && !drive_letter
         && !matches!(mount.fstype.as_str(), "drvfs" | "9p");
@@ -1360,7 +1369,14 @@ pub fn space(path: &Path) -> io::Result<Space> {
     })
 }
 
-#[cfg(not(unix))]
+/// Space on the volume holding `path`, from `GetDiskFreeSpaceExW`: bytes
+/// free to this user and bytes in use.
+#[cfg(windows)]
+pub fn space(path: &Path) -> io::Result<Space> {
+    windows::space(path)
+}
+
+#[cfg(not(any(unix, windows)))]
 pub fn space(_path: &Path) -> io::Result<Space> {
     Err(io::Error::new(
         io::ErrorKind::Unsupported,
@@ -1462,7 +1478,7 @@ pub struct Space {
 }
 
 /// Stub for platforms without a volume implementation.
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 mod platform {
     use super::{DiskInfo, Mount};
     use std::io;
@@ -1602,6 +1618,7 @@ mod tests {
         assert_eq!(quick.unwrap(), 7);
     }
 
+    #[cfg(unix)]
     #[test]
     fn volumes_paths() {
         assert!(is_under_drives(Path::new("/Volumes/Backup/Docs")));
@@ -1675,6 +1692,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn startup_mount_points() {
         assert!(is_startup("/", "apfs"));
@@ -1686,6 +1704,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn recorded_needs_a_proof() {
         let base = Recorded {
@@ -1743,6 +1762,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn network_volumes_get_a_weak_identity() {
         let m = mount(
@@ -1766,6 +1786,54 @@ mod tests {
             "drvfs"
         )));
         assert!(!is_network(&mount("/Volumes/e", "E:\\", "drvfs")));
+    }
+
+    /// The same rules on Windows: a drive letter other than the system
+    /// drive (or a share) is a drive, the system drive is the startup
+    /// disk, a volume with a GUID is never a network one, and a recorded
+    /// identity takes its mount point from the drive letter.
+    #[cfg(windows)]
+    #[test]
+    fn windows_drives_and_identities() {
+        assert!(is_under_drives(Path::new(r"D:\Backup\Docs")));
+        assert!(is_under_drives(Path::new(r"\nas\share\Docs")));
+        assert!(!is_under_drives(Path::new(r"C:\Users\bora\Documents")));
+        assert!(!is_under_drives(Path::new("/Volumes/Backup/Docs")));
+        assert_eq!(
+            drive_mount_point(Path::new(r"e:\Photos")).as_deref(),
+            Some(r"E:\")
+        );
+        assert!(is_startup(r"C:\", "ntfs"));
+        assert!(!is_startup(r"D:\", "ntfs"));
+
+        let local = mount(
+            r"D:\",
+            r"\?\Volume{3f2504e0-4f89-11d3-9a0c-0305e82c3301}\",
+            "exfat",
+        );
+        assert!(!is_network(&local));
+        let share = mount(r"Z:\", r"Z:\", windows::NETWORK_FSTYPE);
+        assert!(is_network(&share));
+        assert_eq!(network_identity(&share).device.as_deref(), Some(r"smb:Z:\"));
+
+        let id = Identity::recorded(
+            r"D:\Backup\Docs",
+            Recorded {
+                volume_name: Some("Backup"),
+                volume_uuid: Some("3f2504e0-4f89-11d3-9a0c-0305e82c3301"),
+                ..Recorded::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(id.mount_point, r"D:\");
+        assert!(!id.is_weak());
+        // The same drive seen at another letter is still the same volume.
+        let seen = Identity {
+            mount_point: r"E:\".into(),
+            volume_uuid: Some("3F2504E0-4F89-11D3-9A0C-0305E82C3301".into()),
+            ..id.clone()
+        };
+        assert!(same_volume(&id, &seen));
     }
 
     #[test]
@@ -2077,7 +2145,7 @@ mod tests {
         assert_eq!(wrap("", 5), Vec::<String>::new());
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
     #[tokio::test]
     async fn other_platforms_say_unsupported() {
         let err = identify(Path::new("/tmp")).await.unwrap_err();
