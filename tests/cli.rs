@@ -1710,7 +1710,10 @@ fn status_says_when_the_state_file_does_not_load() {
     std::fs::create_dir_all(home.path().join("data")).unwrap();
     std::fs::write(
         home.path().join("config/config.toml"),
-        "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = \"/tmp\"\n",
+        format!(
+            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = '{}'\n",
+            home.path().display()
+        ),
     )
     .unwrap();
     std::fs::write(home.path().join("data/state.json"), "{\"version\": 9}").unwrap();
