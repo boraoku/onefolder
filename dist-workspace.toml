@@ -25,9 +25,8 @@ publish-jobs = ["homebrew", "./publish-universal"]
 install-path = "CARGO_HOME"
 # Whether to install an updater program (axoupdater, a later milestone)
 install-updater = false
-# TEMPORARY, revert to "plan" before merging: builds every release
-# artifact on the pull request, to prove the Windows build.
-pr-run-mode = "upload"
+# Run `dist plan` on pull requests, so a broken release config fails early
+pr-run-mode = "plan"
 # The universal job uploads to the release, so it needs to write contents.
 github-custom-job-permissions = { "publish-universal" = { contents = "write" } }
 

@@ -30,7 +30,7 @@ Each job has one local source folder and one or more destinations. Each destinat
 
 ## Quick Start
 
-OneFolder runs on macOS (Apple silicon or Intel), on Linux (x86_64 or ARM64, with glibc 2.35 or newer: Ubuntu 22.04, Debian 12, Fedora 36 and later; RHEL, Rocky and Alma 9 and Debian 11 are older, so build from source there) and on Windows 10 and 11, either natively in Windows Terminal or PowerShell (see [Windows](#windows); for now built from source) or through WSL (WSL 2, or WSL 1), and needs rclone 1.66 or newer on your `PATH`. On Windows itself, install rclone with `winget install Rclone.Rclone`, or download it from [rclone.org/downloads](https://rclone.org/downloads/) and put `rclone.exe` in a folder on your `PATH`. Drive checks on Linux need util-linux's `lsblk` 2.33 or newer (it lacks the `PATH` column before that, as on Rocky 8). On a Mac, install rclone with Homebrew (`brew install rclone`); on Linux and WSL, with rclone's own installer from [rclone.org/install](https://rclone.org/install/) (`sudo -v ; curl https://rclone.org/install.sh | sudo bash`), or with Homebrew if you use it there. Your distribution's package may be older than 1.66. The Homebrew formula below installs rclone along with OneFolder. OneFolder itself never installs, updates or downloads rclone. If rclone is missing or too old, every command that needs it says so and exits with code 2.
+OneFolder runs on macOS (Apple silicon or Intel), on Linux (x86_64 or ARM64, with glibc 2.35 or newer: Ubuntu 22.04, Debian 12, Fedora 36 and later; RHEL, Rocky and Alma 9 and Debian 11 are older, so build from source there) and on Windows 10 and 11, either natively in Windows Terminal or PowerShell (see [Windows](#windows)) or through WSL (WSL 2, or WSL 1), and needs rclone 1.66 or newer on your `PATH`. On Windows itself, install rclone with `winget install Rclone.Rclone`, or download it from [rclone.org/downloads](https://rclone.org/downloads/) and put `rclone.exe` in a folder on your `PATH`. Drive checks on Linux need util-linux's `lsblk` 2.33 or newer (it lacks the `PATH` column before that, as on Rocky 8). On a Mac, install rclone with Homebrew (`brew install rclone`); on Linux and WSL, with rclone's own installer from [rclone.org/install](https://rclone.org/install/) (`sudo -v ; curl https://rclone.org/install.sh | sudo bash`), or with Homebrew if you use it there. Your distribution's package may be older than 1.66. The Homebrew formula below installs rclone along with OneFolder. OneFolder itself never installs, updates or downloads rclone. If rclone is missing or too old, every command that needs it says so and exits with code 2.
 
 **Install via Homebrew**
 
@@ -46,6 +46,12 @@ Each GitHub release also carries a shell installer, for macOS, Linux and WSL. It
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/boraoku/onefolder/releases/latest/download/onefolder-installer.sh | sh
+```
+
+On Windows itself, the PowerShell installer does the same, putting `onefolder.exe` in `~\.cargo\bin`; each release also has `onefolder-x86_64-pc-windows-msvc.zip` to unpack by hand. The binary is not code-signed, so a managed PC whose security rules block unknown programs may refuse to run it until IT allows it.
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/boraoku/onefolder/releases/latest/download/onefolder-installer.ps1 | iex"
 ```
 
 **Run**

@@ -11,14 +11,23 @@ release notes.
 ### Added
 
 - OneFolder runs on Windows itself, in Windows Terminal or PowerShell,
-  without WSL (built from source for now). Paths are Windows paths
+  without WSL. Releases carry `onefolder-x86_64-pc-windows-msvc.zip` and a
+  PowerShell installer (`onefolder-installer.ps1`). Paths are Windows paths
   (`D:\Backup\Documents`, `~\Documents`); any drive letter but the system
   drive's, and any network share, is a drive. Drives are identified by
   their Windows volume GUID, read straight from Windows, so a drive that
   comes back under another letter is found. Ctrl-C stops rclone cleanly
-  (Ctrl-Break to its own console group), and stale run and bisync locks
-  are recognised from a process snapshot. Lint and tests run on Windows
-  in CI too.
+  (Ctrl-Break to its own console group), with the real rclone run behind
+  a Scoop or Chocolatey launcher, which would otherwise take rclone down
+  with it before bisync finishes its clean shutdown. Stale run and bisync
+  locks are recognised from a process snapshot. Lint, tests, real runs
+  and a Ctrl-C test run on Windows in CI.
+
+### Fixed
+
+- The release builds the Apple silicon binary on macos-15: GitHub no
+  longer offers dist's default, macos-14, so the next release would have
+  had no Apple silicon build.
 
 ## 0.4.2 - 2026-11-02
 
