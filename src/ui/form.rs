@@ -1523,6 +1523,7 @@ pub fn path_hint(value: &str, missing_ok: bool) -> Option<(String, Tone)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use ratatui::backend::TestBackend;
     #[cfg(unix)]
     use ratatui::Terminal;
