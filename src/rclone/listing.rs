@@ -520,6 +520,7 @@ mod tests {
     }
 
     /// Runs a shell script as if it were rclone's `lsjson`.
+    #[cfg(unix)]
     async fn fake_listing(script: &str, listed: &AtomicU64) -> Result<Vec<Entry>, ListError> {
         let args = vec!["-c".to_string(), script.to_string()];
         list_streaming(Path::new("/bin/sh"), &args, "/fixture/dst", Some(listed)).await

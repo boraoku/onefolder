@@ -59,7 +59,10 @@ impl Config {
     }
 
     /// Number of destinations across all jobs.
-    #[cfg_attr(not(test), expect(dead_code, reason = "used by status, milestone 6"))]
+    #[cfg_attr(
+        any(not(test), not(unix)),
+        expect(dead_code, reason = "used by status, milestone 6")
+    )]
     pub fn destination_count(&self) -> usize {
         self.jobs.iter().map(|j| j.destinations.len()).sum()
     }

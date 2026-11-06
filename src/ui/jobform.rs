@@ -1368,6 +1368,7 @@ mod tests {
         assert!(text.contains("is inside the source folder"), "{text}");
     }
 
+    #[cfg(unix)]
     fn existing() -> Job {
         let mut job = Job::new("documents", "/usr");
         job.excludes = vec![".DS_Store".into()];

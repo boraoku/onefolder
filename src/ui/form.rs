@@ -2078,12 +2078,14 @@ mod tests {
         assert_eq!(f.text("r"), "Archive");
     }
 
+    #[cfg(unix)]
     fn render(form: &Form, width: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
         terminal.draw(|frame| form.render(frame)).unwrap();
         terminal.backend().to_string()
     }
 
+    #[cfg(unix)]
     fn snapshot(name: &str, value: String) {
         insta::with_settings!({
             snapshot_path => concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots"),

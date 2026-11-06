@@ -523,6 +523,7 @@ fn render(b: &Browser, width: u16) -> String {
     terminal.backend().to_string()
 }
 
+#[cfg(unix)]
 fn snapshot(name: &str, value: String) {
     insta::with_settings!({
         snapshot_path => concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots"),

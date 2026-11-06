@@ -1,3 +1,7 @@
+// Many of these tests use Unix paths and run on Unix only, as do the
+// helpers and imports only they use.
+#![cfg_attr(not(unix), allow(unused_imports, dead_code))]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
