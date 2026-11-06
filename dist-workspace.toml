@@ -31,6 +31,12 @@ pr-run-mode = "upload"
 # The universal job uploads to the release, so it needs to write contents.
 github-custom-job-permissions = { "publish-universal" = { contents = "write" } }
 
+# dist builds aarch64-apple-darwin on macos-14 by default, which GitHub no
+# longer runs ("The configuration 'macos-14-arm64-us-default' is not
+# supported"); build it on macos-15 instead.
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
+
 # The Homebrew formula installs rclone too: OneFolder needs it on PATH.
 [dist.dependencies.homebrew]
 rclone = { stage = ["run"] }
