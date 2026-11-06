@@ -1523,7 +1523,9 @@ pub fn path_hint(value: &str, missing_ok: bool) -> Option<(String, Tone)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use ratatui::backend::TestBackend;
+    #[cfg(unix)]
     use ratatui::Terminal;
 
     fn key(code: KeyCode) -> KeyEvent {
@@ -1703,6 +1705,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn no_path_hint_beside_an_error() {
         let mut f = Form::new(
@@ -1909,6 +1912,7 @@ mod tests {
         assert_eq!(f.handle_key(key(KeyCode::Enter)), FormEvent::Submit);
     }
 
+    #[cfg(unix)]
     #[test]
     fn path_hints() {
         assert_eq!(path_hint("", false), None);
@@ -1923,6 +1927,7 @@ mod tests {
         lines.iter().map(|l| l.to_string() + "\n").collect()
     }
 
+    #[cfg(unix)]
     #[test]
     fn tab_completes_folders_in_a_path_field() {
         let dir = tempfile::tempdir().unwrap();
@@ -1981,6 +1986,7 @@ mod tests {
         assert!(!f.is_editing());
     }
 
+    #[cfg(unix)]
     #[test]
     fn an_empty_path_field_completes_from_home() {
         let mut f = Form::new("t", vec![Field::path("p", "Folder", "", false)]);
@@ -2074,12 +2080,14 @@ mod tests {
         assert_eq!(f.text("r"), "Archive");
     }
 
+    #[cfg(unix)]
     fn render(form: &Form, width: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
         terminal.draw(|frame| form.render(frame)).unwrap();
         terminal.backend().to_string()
     }
 
+    #[cfg(unix)]
     fn snapshot(name: &str, value: String) {
         insta::with_settings!({
             snapshot_path => concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots"),
@@ -2089,6 +2097,7 @@ mod tests {
         });
     }
 
+    #[cfg(unix)]
     #[test]
     fn renders_at_80_columns() {
         let mut f = sample();
@@ -2096,6 +2105,7 @@ mod tests {
         snapshot("form_80", render(&f, 80));
     }
 
+    #[cfg(unix)]
     #[test]
     fn renders_at_120_columns_while_editing_lists() {
         let mut f = sample();
@@ -2109,6 +2119,7 @@ mod tests {
         snapshot("form_120", render(&f, 120));
     }
 
+    #[cfg(unix)]
     #[test]
     fn renders_rows_and_messages_at_80_columns() {
         let mut f = sample();

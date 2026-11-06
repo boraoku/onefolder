@@ -1872,8 +1872,8 @@ mod tests {
         let mut text = String::from("version = 1\n");
         for name in names {
             text.push_str(&format!(
-                "\n[[jobs]]\nname = \"{name}\"\nsource = \"{src}\"\n\n  [[jobs.destinations]]\n  \
-                 id = \"d-{id}\"\n  type = \"local\"\n  path = \"{dst}\"\n",
+                "\n[[jobs]]\nname = \"{name}\"\nsource = '{src}'\n\n  [[jobs.destinations]]\n  \
+                 id = \"d-{id}\"\n  type = \"local\"\n  path = '{dst}'\n",
                 id = match *name {
                     "documents" => "0001",
                     "records" => "0002",
@@ -1922,7 +1922,9 @@ mod tests {
     }
 
     /// A file that can neither be saved nor read again: the move is undone
-    /// on the screen, with the reason.
+    /// on the screen, with the reason. Unix only: the file is made
+    /// unreadable by its mode bits.
+    #[cfg(unix)]
     #[test]
     fn a_move_that_cannot_be_saved_or_reloaded_is_undone() {
         use std::os::unix::fs::PermissionsExt;
@@ -2075,8 +2077,8 @@ mod tests {
             ("photos", "d-0003"),
         ] {
             text.push_str(&format!(
-                "\n# The {name} job.\n[[jobs]]\nname = \"{name}\"\nsource = \"{src}\"\n\n  \
-                 [[jobs.destinations]]\n  id = \"{id}\"\n  type = \"local\"\n  path = \"{dst}\"\n",
+                "\n# The {name} job.\n[[jobs]]\nname = \"{name}\"\nsource = '{src}'\n\n  \
+                 [[jobs.destinations]]\n  id = \"{id}\"\n  type = \"local\"\n  path = '{dst}'\n",
                 src = dir.path().join(name).display(),
                 dst = dir.path().join(format!("{name}-copy")).display(),
             ));
@@ -2147,31 +2149,35 @@ mod tests {
         );
         assert!(move_job(&paths, "nope", true).is_err());
         // A file that cannot be saved: the screen says so and shows the
-        // order on disk.
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o500)).unwrap();
-        let mut screen = screen::Screen::new(
-            job_views(&load(&paths).unwrap().config.jobs, &State::default()),
-            0,
-        );
-        let Some(screen::Action::Move { name, down }) = screen.handle_key(key) else {
-            panic!("a move");
-        };
-        assert_eq!(screen.jobs[0].name, "photos", "moved on the screen");
-        save_move(&paths, &mut screen, &name, down);
-        fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o700)).unwrap();
-        let (message, tone) = screen.message.clone().expect("a message");
-        assert_eq!(tone, Tone::Error);
-        assert!(message.contains("could not save"), "{message}");
-        assert_eq!(
-            screen
-                .jobs
-                .iter()
-                .map(|j| j.name.as_str())
-                .collect::<Vec<_>>(),
-            ["records", "photos", "documents"]
-        );
-        assert_eq!(order(&paths), ["records", "photos", "documents"]);
+        // order on disk. Unix only: it takes write permission away from
+        // the folder by its mode bits.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o500)).unwrap();
+            let mut screen = screen::Screen::new(
+                job_views(&load(&paths).unwrap().config.jobs, &State::default()),
+                0,
+            );
+            let Some(screen::Action::Move { name, down }) = screen.handle_key(key) else {
+                panic!("a move");
+            };
+            assert_eq!(screen.jobs[0].name, "photos", "moved on the screen");
+            save_move(&paths, &mut screen, &name, down);
+            fs::set_permissions(&paths.config_dir, fs::Permissions::from_mode(0o700)).unwrap();
+            let (message, tone) = screen.message.clone().expect("a message");
+            assert_eq!(tone, Tone::Error);
+            assert!(message.contains("could not save"), "{message}");
+            assert_eq!(
+                screen
+                    .jobs
+                    .iter()
+                    .map(|j| j.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["records", "photos", "documents"]
+            );
+            assert_eq!(order(&paths), ["records", "photos", "documents"]);
+        }
     }
 
     #[test]
@@ -2233,6 +2239,7 @@ mod tests {
         assert_eq!(replaced_pairs(&original, &moved).len(), 4);
     }
 
+    #[cfg(unix)]
     #[test]
     fn local_flag_values() {
         assert_eq!(
@@ -2244,5 +2251,19 @@ mod tests {
             (PathBuf::from("/tmp/y"), Mode::OneWay)
         );
         assert!(parse_local("  ").is_err());
+    }
+
+    /// The drive's colon is part of the path, not a mode.
+    #[cfg(windows)]
+    #[test]
+    fn local_flag_values_on_windows() {
+        assert_eq!(
+            parse_local(r"D:\Backup\Docs:two-way").unwrap(),
+            (PathBuf::from(r"D:\Backup\Docs"), Mode::TwoWay)
+        );
+        assert_eq!(
+            parse_local(r"D:\Backup\x\..\Docs").unwrap(),
+            (PathBuf::from(r"D:\Backup\Docs"), Mode::OneWay)
+        );
     }
 }

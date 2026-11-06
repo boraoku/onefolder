@@ -1,0 +1,9 @@
+# Check text files out with LF line endings on every system, Windows
+# included: rustfmt, the insta snapshots and the rclone fixtures are
+# compared byte for byte, and Git for Windows would otherwise turn them
+# into CRLF.
+* text=auto eol=lf
+
+# PowerShell's own output, recorded with Windows line endings on purpose:
+# the parsers must read it as PowerShell writes it.
+tests/fixtures/volume/get-volume-*.json -text

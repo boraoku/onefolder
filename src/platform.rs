@@ -1,5 +1,6 @@
-//! Where OneFolder runs: macOS, Linux, or Linux under WSL (the Windows
-//! Subsystem for Linux). Answers the few questions whose answer differs:
+//! Where OneFolder runs: macOS, Linux, Linux under WSL (the Windows
+//! Subsystem for Linux), or Windows itself. Answers the few questions
+//! whose answer differs:
 //! where drives are mounted, which mount points are the system disk, what
 //! a drive path looks like in a placeholder, and how the computer is named
 //! in messages ("this Mac" on macOS, "this computer" elsewhere).
@@ -18,6 +19,9 @@ pub enum Os {
     Linux,
     /// Linux under WSL: Windows drives are mounted at `/mnt/<letter>`.
     Wsl,
+    /// Windows itself: a drive is a letter (`D:\`) or a share
+    /// (`\\nas\share\`), and the system drive is `%SystemDrive%`.
+    Windows,
 }
 
 /// The platform this binary runs on, worked out once.
@@ -26,6 +30,8 @@ pub fn os() -> Os {
     *OS.get_or_init(|| {
         if cfg!(target_os = "macos") {
             Os::Mac
+        } else if cfg!(windows) {
+            Os::Windows
         } else if is_wsl() {
             Os::Wsl
         } else {
@@ -37,7 +43,7 @@ pub fn os() -> Os {
 /// True under WSL 1 or 2: the interop handler is registered, WSL named the
 /// distribution, or the kernel says it is Microsoft's.
 pub fn is_wsl() -> bool {
-    if cfg!(target_os = "macos") {
+    if cfg!(target_os = "macos") || cfg!(windows) {
         return false;
     }
     detect_wsl(
@@ -74,7 +80,7 @@ pub fn user_name() -> Option<String> {
 /// under (`/Volumes`, `/media`...) and the drive's mount point.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DrivePath {
-    pub root: &'static str,
+    pub root: String,
     pub mount_point: String,
 }
 
@@ -86,15 +92,25 @@ pub struct DrivePath {
 ///   name) or `/media/<name>` (older systems), `/run/media/<user>/<name>`
 ///   (Fedora, Arch) and `/mnt/<name>`;
 /// - on WSL the same, except the system drive `/mnt/c` and WSL's own
-///   `/mnt/wsl` and `/mnt/wslg`, which are not drives to record.
+///   `/mnt/wsl` and `/mnt/wslg`, which are not drives to record;
+/// - on Windows any drive letter but the system drive's (`D:\Backup` is on
+///   `D:\`), and a share (`\\nas\share\Backup` is on `\\nas\share\`).
 pub fn drive_path_on(os: Os, user: Option<&str>, path: &Path) -> Option<DrivePath> {
+    if os == Os::Windows {
+        let root = windows_drive_root(&path.to_string_lossy())?;
+        let system = root.eq_ignore_ascii_case(&windows_system_drive());
+        return (!system).then(|| DrivePath {
+            root: root.clone(),
+            mount_point: root,
+        });
+    }
     let parts = lexical_parts(path);
     let part = |i: usize| parts.get(i).map(String::as_str);
     let first = part(0)?;
     if first.eq_ignore_ascii_case("Volumes") {
         let name = part(1)?;
         return Some(DrivePath {
-            root: "/Volumes",
+            root: "/Volumes".into(),
             mount_point: format!("/Volumes/{name}"),
         });
     }
@@ -103,20 +119,20 @@ pub fn drive_path_on(os: Os, user: Option<&str>, path: &Path) -> Option<DrivePat
     }
     let found = match (first, part(1), part(2)) {
         ("media", Some(u), Some(name)) if Some(u) == user => DrivePath {
-            root: "/media",
+            root: "/media".into(),
             mount_point: format!("/media/{u}/{name}"),
         },
         ("media", Some(u), None) if Some(u) == user => return None,
         ("media", Some(name), _) => DrivePath {
-            root: "/media",
+            root: "/media".into(),
             mount_point: format!("/media/{name}"),
         },
         ("run", Some("media"), Some(u)) => DrivePath {
-            root: "/run/media",
+            root: "/run/media".into(),
             mount_point: format!("/run/media/{u}/{}", part(3)?),
         },
         ("mnt", Some(name), _) => DrivePath {
-            root: "/mnt",
+            root: "/mnt".into(),
             mount_point: format!("/mnt/{name}"),
         },
         _ => return None,
@@ -136,6 +152,41 @@ fn is_wsl_own(mount_point: &str) -> bool {
 /// [`drive_path_on`] for this platform and user.
 pub fn drive_path(path: &Path) -> Option<DrivePath> {
     drive_path_on(os(), user_name().as_deref(), path)
+}
+
+/// The drive or share a Windows path is on, as its root: `D:\` for
+/// `D:\Backup` (also `d:/Backup` and `\\?\D:\Backup`), `\\nas\share\` for
+/// `\\nas\share\Backup` (also `\\?\UNC\nas\share\Backup`). `None` for any
+/// other path, `D:Backup` (relative to D:'s current folder) included.
+/// Read from the text alone, so it answers the same on every platform.
+pub fn windows_drive_root(path: &str) -> Option<String> {
+    let unc;
+    let mut p = path
+        .strip_prefix(r"\\?\")
+        .or_else(|| path.strip_prefix("//?/"))
+        .unwrap_or(path);
+    if let Some(rest) = p.strip_prefix(r"UNC\") {
+        unc = format!(r"\\{rest}");
+        p = &unc;
+    }
+    let bytes = p.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        let rooted = bytes.len() == 2 || matches!(bytes[2], b'\\' | b'/');
+        // `D:` alone is the drive too (`SystemDrive` is written so).
+        return rooted.then(|| format!(r"{}:\", (bytes[0] as char).to_ascii_uppercase()));
+    }
+    let rest = p.strip_prefix(r"\\").or_else(|| p.strip_prefix("//"))?;
+    let mut parts = rest.split(['\\', '/']).filter(|s| !s.is_empty());
+    let (server, share) = (parts.next()?, parts.next()?);
+    Some(format!(r"\\{server}\{share}\"))
+}
+
+/// The root of the Windows system drive, `C:\`, from `SystemDrive`.
+pub fn windows_system_drive() -> String {
+    std::env::var("SystemDrive")
+        .ok()
+        .and_then(|d| windows_drive_root(&d))
+        .unwrap_or_else(|| r"C:\".to_string())
 }
 
 /// A path's normal components, with `.` and `..` resolved lexically.
@@ -222,9 +273,12 @@ pub const VIRTUAL_FSTYPES: &[&str] = &[
 ///   the standard system mount points ([`LINUX_SYSTEM_MOUNTS`]). Every
 ///   other mount (a drive at `/media/<user>/Backup`, `/data`,
 ///   `/srv/backup` or `/mnt`, a network share) is a drive and is checked;
-/// - WSL: the same, and the Windows system drive `/mnt/c`.
+/// - WSL: the same, and the Windows system drive `/mnt/c`;
+/// - Windows: the system drive (`C:\`). `fstype` is not looked at.
 pub fn is_system_mount_on(os: Os, mount_point: &str, fstype: &str) -> bool {
     match os {
+        Os::Windows => windows_drive_root(mount_point)
+            .is_some_and(|root| root.eq_ignore_ascii_case(&windows_system_drive())),
         Os::Mac => mount_point == "/" || mount_point.starts_with("/System/Volumes/"),
         Os::Linux | Os::Wsl => {
             LINUX_SYSTEM_MOUNTS.contains(&mount_point)
@@ -246,6 +300,7 @@ pub fn is_system_mount(mount_point: &str, fstype: &str) -> bool {
 pub fn system_disk_note_on(os: Os, mount_point: &str) -> String {
     match os {
         Os::Mac => "on the startup disk".to_string(),
+        Os::Windows => format!("on {mount_point}, the system drive"),
         _ if mount_point == "/" => "on /, the system disk".to_string(),
         _ => format!("on {mount_point}, part of the system disk"),
     }
@@ -282,9 +337,30 @@ pub fn placeholder_drive_path_on(os: Os, user: Option<&str>) -> String {
     match (os, user) {
         (Os::Mac, _) => "/Volumes/Backup/Documents".to_string(),
         (Os::Wsl, _) => "/mnt/d/Backup/Documents".to_string(),
+        (Os::Windows, _) => r"D:\Backup\Documents".to_string(),
         (Os::Linux, Some(user)) => format!("/media/{user}/Backup/Documents"),
         (Os::Linux, None) => "/media/Backup/Documents".to_string(),
     }
+}
+
+/// How a full path starts, for the form's message about one that is not:
+/// `starting with / or ~`, on Windows with a drive.
+pub fn full_path_start_on(os: Os) -> &'static str {
+    match os {
+        Os::Windows => r"starting with a drive such as D:\ or with ~",
+        _ => "starting with / or ~",
+    }
+}
+
+/// [`full_path_start_on`] for the platform the screens describe.
+pub fn full_path_start() -> &'static str {
+    full_path_start_on(ui_os())
+}
+
+/// True when text reads as a local path to shorten as one: it starts with
+/// `/` or `~`, or on any platform with a Windows drive or share.
+pub fn looks_like_local_path(text: &str) -> bool {
+    text.starts_with('/') || text.starts_with('~') || windows_drive_root(text).is_some()
 }
 
 /// [`placeholder_drive_path_on`] for the platform the screens describe.
@@ -293,7 +369,9 @@ pub fn placeholder_drive_path() -> String {
 }
 
 /// The folder the browser's `v` key opens: the first that exists of the
-/// places drives are mounted, or the last of them when none does.
+/// places drives are mounted, or the last of them when none does. On
+/// Windows the first drive after the system drive (`D:\`, `E:\`...), or
+/// the system drive when there is none.
 pub fn drives_folder_on(os: Os, user: Option<&str>, exists: impl Fn(&Path) -> bool) -> String {
     let mut candidates: Vec<String> = Vec::new();
     match os {
@@ -307,6 +385,15 @@ pub fn drives_folder_on(os: Os, user: Option<&str>, exists: impl Fn(&Path) -> bo
             candidates.push("/mnt".into());
         }
         Os::Wsl => candidates.push("/mnt".into()),
+        Os::Windows => {
+            let system = windows_system_drive();
+            candidates.extend(
+                ('D'..='Z')
+                    .map(|l| format!(r"{l}:\"))
+                    .filter(|d| !d.eq_ignore_ascii_case(&system)),
+            );
+            candidates.push(system);
+        }
     }
     let last = candidates.last().cloned().unwrap_or_else(|| "/".into());
     candidates
@@ -362,6 +449,17 @@ pub const MAC_WORDS: Words = Words {
     on_local: "on Mac",
 };
 
+/// The words on Windows, where disks are drives.
+pub const WINDOWS_WORDS: Words = Words {
+    this_computer: "this computer",
+    your_computer: "your computer",
+    system_disk: "the system drive",
+    file_system: "the file system",
+    file_systems: "the file system's",
+    to_local: "here",
+    on_local: "here",
+};
+
 /// The words on Linux and WSL.
 pub const OTHER_WORDS: Words = Words {
     this_computer: "this computer",
@@ -378,6 +476,7 @@ pub fn words_on(os: Os) -> &'static Words {
     match os {
         Os::Mac => &MAC_WORDS,
         Os::Linux | Os::Wsl => &OTHER_WORDS,
+        Os::Windows => &WINDOWS_WORDS,
     }
 }
 
@@ -413,13 +512,23 @@ pub enum RcloneAction {
 /// The advice for an [`RcloneAction`]: `install it with: brew install
 /// rclone` on macOS; on Linux rclone's own installer (`install it from
 /// https://rclone.org/install/ (or brew install rclone with Homebrew)`),
-/// and `brew upgrade rclone` only when `brew` is on PATH.
+/// and `brew upgrade rclone` only when `brew` is on PATH; on Windows
+/// rclone's downloads or winget.
 pub fn rclone_advice_on(os: Os, action: RcloneAction, brew: bool) -> String {
     let (verb, command) = match action {
         RcloneAction::Install => ("install", "brew install rclone"),
         RcloneAction::Upgrade => ("update", "brew upgrade rclone"),
         RcloneAction::Reinstall => ("reinstall", "brew reinstall rclone"),
     };
+    if os == Os::Windows {
+        return match action {
+            RcloneAction::Install => {
+                "install it from https://rclone.org/install/ (or winget install Rclone.Rclone)"
+                    .to_string()
+            }
+            _ => format!("{verb} it from https://rclone.org/install/"),
+        };
+    }
     match (os, action, brew) {
         (Os::Mac, _, _) | (_, RcloneAction::Upgrade | RcloneAction::Reinstall, true) => {
             format!("{verb} it with: {command}")
@@ -498,8 +607,11 @@ mod tests {
     fn this_platform_is_known() {
         if cfg!(target_os = "macos") {
             assert_eq!(os(), Os::Mac);
+        } else if cfg!(windows) {
+            assert_eq!(os(), Os::Windows);
+            assert!(!is_wsl());
         } else {
-            assert_ne!(os(), Os::Mac);
+            assert!(matches!(os(), Os::Linux | Os::Wsl));
         }
         // Unit tests describe the Mac unless they ask otherwise.
         assert_eq!(words(), &MAC_WORDS);
@@ -584,6 +696,71 @@ mod tests {
         assert_eq!(
             wsl("/media/bora/Backup/x").as_deref(),
             Some("/media/bora/Backup")
+        );
+    }
+
+    #[test]
+    fn windows_drive_roots() {
+        assert_eq!(windows_drive_root(r"D:\Backup").as_deref(), Some(r"D:\"));
+        assert_eq!(windows_drive_root("d:/Backup").as_deref(), Some(r"D:\"));
+        assert_eq!(windows_drive_root(r"E:\").as_deref(), Some(r"E:\"));
+        assert_eq!(windows_drive_root("C:").as_deref(), Some(r"C:\"));
+        assert_eq!(windows_drive_root(r"\\?\D:\x").as_deref(), Some(r"D:\"));
+        assert_eq!(
+            windows_drive_root(r"\\nas\share\Backup").as_deref(),
+            Some(r"\\nas\share\")
+        );
+        assert_eq!(
+            windows_drive_root(r"\\?\UNC\nas\share\x").as_deref(),
+            Some(r"\\nas\share\")
+        );
+        assert_eq!(windows_drive_root(r"\\nas"), None, "a server, no share");
+        assert_eq!(windows_drive_root("D:Backup"), None, "relative to D:");
+        assert_eq!(windows_drive_root("/Volumes/Backup"), None);
+        assert_eq!(windows_drive_root("Backup"), None);
+    }
+
+    #[test]
+    fn drive_paths_on_windows() {
+        // SystemDrive is C: on CI's Windows runners and unset elsewhere,
+        // where C: is assumed.
+        let win = |p: &str| mount_point(Os::Windows, Some("bora"), p);
+        assert_eq!(win(r"D:\Backup\Documents").as_deref(), Some(r"D:\"));
+        assert_eq!(win("e:/Photos").as_deref(), Some(r"E:\"));
+        assert_eq!(win(r"C:\Users\bora\Documents"), None, "the system drive");
+        assert_eq!(win(r"c:\x"), None);
+        assert_eq!(win(r"\\nas\share\Backup").as_deref(), Some(r"\\nas\share\"));
+        assert_eq!(win("/Volumes/Backup"), None);
+        assert_eq!(
+            drive_path_on(Os::Windows, None, Path::new(r"D:\x"))
+                .unwrap()
+                .root,
+            r"D:\"
+        );
+        assert!(is_system_mount_on(Os::Windows, r"C:\", "ntfs"));
+        assert!(is_system_mount_on(Os::Windows, "c:", "ntfs"));
+        assert!(!is_system_mount_on(Os::Windows, r"D:\", "ntfs"));
+        assert!(!is_system_mount_on(Os::Windows, r"\\nas\share\", "smb"));
+        assert_eq!(
+            system_disk_note_on(Os::Windows, r"C:\"),
+            r"on C:\, the system drive"
+        );
+        assert_eq!(
+            placeholder_drive_path_on(Os::Windows, Some("bora")),
+            r"D:\Backup\Documents"
+        );
+        let none = |_: &Path| false;
+        assert_eq!(drives_folder_on(Os::Windows, None, none), r"C:\");
+        let e = |p: &Path| p == Path::new(r"E:\");
+        assert_eq!(drives_folder_on(Os::Windows, None, e), r"E:\");
+        assert_eq!(words_on(Os::Windows).system_disk, "the system drive");
+        assert_eq!(
+            rclone_advice_on(Os::Windows, RcloneAction::Install, false),
+            "install it from https://rclone.org/install/ (or winget install Rclone.Rclone)"
+        );
+        assert_eq!(
+            rclone_advice_on(Os::Windows, RcloneAction::Upgrade, true),
+            "update it from https://rclone.org/install/"
         );
     }
 

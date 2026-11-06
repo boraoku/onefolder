@@ -59,7 +59,10 @@ impl Config {
     }
 
     /// Number of destinations across all jobs.
-    #[cfg_attr(not(test), expect(dead_code, reason = "used by status, milestone 6"))]
+    #[cfg_attr(
+        any(not(test), not(unix)),
+        expect(dead_code, reason = "used by status, milestone 6")
+    )]
     pub fn destination_count(&self) -> usize {
         self.jobs.iter().map(|j| j.destinations.len()).sum()
     }
@@ -468,17 +471,36 @@ pub fn resolve_existing(path: &Path) -> PathBuf {
 }
 
 /// Normalised components of an absolute path: `.` and `..` resolved
-/// lexically, lowercased (APFS and HFS+ are usually case insensitive).
+/// lexically, lowercased (APFS, HFS+ and NTFS are usually case
+/// insensitive). A Windows path starts with its drive (`d:`) or share
+/// (`\\nas\share`), the same whether written `D:\` or `\\?\D:\` (as
+/// `canonicalize` gives it), so folders on two drives never overlap.
 fn lexical_parts(path: &Path) -> Vec<String> {
-    use std::path::Component;
+    use std::path::{Component, Prefix};
     let mut parts = Vec::new();
+    let mut floor = 0;
     for component in path.components() {
         match component {
+            Component::Prefix(prefix) => {
+                let drive = match prefix.kind() {
+                    Prefix::Disk(d) | Prefix::VerbatimDisk(d) => format!("{}:", d as char),
+                    Prefix::UNC(server, share) | Prefix::VerbatimUNC(server, share) => format!(
+                        r"\\{}\{}",
+                        server.to_string_lossy(),
+                        share.to_string_lossy()
+                    ),
+                    _ => prefix.as_os_str().to_string_lossy().into_owned(),
+                };
+                parts.push(drive.to_lowercase());
+                floor = 1;
+            }
             Component::Normal(part) => parts.push(part.to_string_lossy().to_lowercase()),
             Component::ParentDir => {
-                parts.pop();
+                if parts.len() > floor {
+                    parts.pop();
+                }
             }
-            Component::CurDir | Component::RootDir | Component::Prefix(_) => {}
+            Component::CurDir | Component::RootDir => {}
         }
     }
     parts

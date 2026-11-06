@@ -3,6 +3,8 @@
 use std::env;
 use std::ffi::OsStr;
 use std::fmt;
+#[cfg(windows)]
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -203,6 +205,61 @@ fn is_executable(path: &Path) -> bool {
     path.is_file()
 }
 
+/// The real rclone behind a Windows launcher. Scoop and Chocolatey put a
+/// small `rclone.exe` (a "shim") on PATH that starts the real one as its
+/// child. Run through it, rclone cannot stop cleanly: Ctrl-Break, which
+/// asks rclone to stop, ends the shim at once, and the shim takes rclone
+/// with it, leaving bisync's lock behind. So the real one is run instead:
+/// Scoop names it in `rclone.shim` beside the shim (`path = "..."`), and a
+/// Chocolatey shim says it when asked with `--shimgen-help` (`Target:
+/// '...'`). The real rclone is tens of megabytes, a shim a few hundred
+/// kilobytes at most, so nothing else is ever run with that flag. Any other
+/// path, and a shim whose target cannot be read, is kept as it is.
+#[cfg(windows)]
+async fn behind_launcher(path: PathBuf) -> PathBuf {
+    const SHIM_MAX: u64 = 1024 * 1024;
+    if !path.metadata().is_ok_and(|m| m.len() < SHIM_MAX) {
+        return path;
+    }
+    let scoop = path.with_extension("shim");
+    if let Some(target) = fs::read_to_string(&scoop)
+        .ok()
+        .and_then(|text| shim_target(&text, "path ="))
+    {
+        return existing(target).unwrap_or(path);
+    }
+    let asked = exec::run_capture(&path, &["--shimgen-help"]);
+    match tokio::time::timeout(VERSION_TIMEOUT, asked).await {
+        Ok(Ok(out)) => shim_target(&out.stdout, "Target:")
+            .and_then(existing)
+            .unwrap_or(path),
+        _ => path,
+    }
+}
+
+#[cfg(not(windows))]
+async fn behind_launcher(path: PathBuf) -> PathBuf {
+    path
+}
+
+/// The quoted path after `key` on a line of a shim's description:
+/// `path = "C:\...\rclone.exe"` (Scoop) or `Target: 'C:\...\rclone.exe'`
+/// (Chocolatey).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn shim_target(text: &str, key: &str) -> Option<PathBuf> {
+    text.lines().find_map(|line| {
+        let rest = line.trim().strip_prefix(key)?.trim();
+        let unquoted = rest.trim_matches(|c| c == '"' || c == '\'').trim();
+        (!unquoted.is_empty()).then(|| PathBuf::from(unquoted))
+    })
+}
+
+/// `path` when it is an existing file.
+#[cfg(windows)]
+fn existing(path: PathBuf) -> Option<PathBuf> {
+    path.is_file().then_some(path)
+}
+
 /// How long `rclone version` may take before it counts as unreadable.
 pub const VERSION_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -221,6 +278,7 @@ async fn detect_with_timeout(
     limit: Duration,
 ) -> Result<Rclone, DetectError> {
     let path = find_on_path(path_var).ok_or(DetectError::NotFound)?;
+    let path = behind_launcher(path).await;
     let run = exec::run_capture(&path, &["version"]);
     let captured = match tokio::time::timeout(limit, run).await {
         Ok(result) => result.map_err(|e| DetectError::Unreadable {
@@ -294,6 +352,27 @@ pub fn parse_brew_info(text: &str) -> Option<Version> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn launcher_targets_are_read() {
+        let scoop =
+            "path = \"C:\\Users\\bora\\scoop\\apps\\rclone\\current\\rclone.exe\"\nargs =\n";
+        assert_eq!(
+            shim_target(scoop, "path ="),
+            Some(PathBuf::from(
+                r"C:\Users\bora\scoop\apps\rclone\current\rclone.exe"
+            ))
+        );
+        let choco = "Usage: ...\n Target: 'C:\\ProgramData\\chocolatey\\lib\\rclone.portable\\tools\\rclone.exe'\n Working Directory: ''\n";
+        assert_eq!(
+            shim_target(choco, "Target:"),
+            Some(PathBuf::from(
+                r"C:\ProgramData\chocolatey\lib\rclone.portable\tools\rclone.exe"
+            ))
+        );
+        assert_eq!(shim_target("args = --x\n", "path ="), None);
+        assert_eq!(shim_target("path = \"\"\n", "path ="), None);
+    }
 
     #[test]
     fn homebrew_versions() {

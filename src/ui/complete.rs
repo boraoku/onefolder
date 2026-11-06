@@ -27,16 +27,22 @@ pub struct Split {
 }
 
 /// Cuts `value` for completion. A local field that is empty, or holds
-/// just `~`, completes in the home folder (`~/`). A value ending in `/`
-/// lists that folder's children.
+/// just `~`, completes in the home folder (`~/`, `~\` on Windows). A value
+/// ending in `/` lists that folder's children; on Windows a local value
+/// is cut at `\` too.
 pub fn split(value: &str, local: bool) -> Split {
     if local && (value.trim().is_empty() || value == "~") {
         return Split {
-            base: "~/".to_string(),
+            base: format!("~{}", std::path::MAIN_SEPARATOR),
             prefix: String::new(),
         };
     }
-    match value.rfind('/') {
+    let cut = if local && cfg!(windows) {
+        value.rfind(['/', '\\'])
+    } else {
+        value.rfind('/')
+    };
+    match cut {
         Some(at) => Split {
             base: value[..=at].to_string(),
             prefix: value[at + 1..].to_string(),
@@ -119,9 +125,11 @@ impl Cycle {
         };
     }
 
-    /// The field's text for the match shown: the base, the name and a `/`.
+    /// The field's text for the match shown: the base, the name and a `/`
+    /// (a `\` after a base that ends with one, as typed on Windows).
     pub fn text(&self) -> String {
-        format!("{}{}/", self.base, self.matches[self.index])
+        let sep = if self.base.ends_with('\\') { '\\' } else { '/' };
+        format!("{}{}{sep}", self.base, self.matches[self.index])
     }
 
     /// The hint under the field, fitted to `width` columns: `2 of 3:
@@ -200,8 +208,9 @@ mod tests {
             ("/Volumes/Backup/", "")
         );
         // An empty local field, or just ~, completes in the home folder.
-        assert_eq!(split("", true).base, "~/");
-        assert_eq!(split("~", true).base, "~/");
+        let home_base = format!("~{}", std::path::MAIN_SEPARATOR);
+        assert_eq!(split("", true).base, home_base);
+        assert_eq!(split("~", true).base, home_base);
         // OneDrive: relative to the drive root, empty is the root.
         let s = split("Backups/Doc", false);
         assert_eq!((s.base.as_str(), s.prefix.as_str()), ("Backups/", "Doc"));
@@ -211,6 +220,7 @@ mod tests {
         assert_eq!(remote_parent(""), "");
     }
 
+    #[cfg(unix)]
     #[test]
     fn the_parent_is_expanded_and_must_be_absolute() {
         let home = config::expand_tilde("~");
@@ -220,6 +230,24 @@ mod tests {
         assert_eq!(local_parent(""), None);
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn windows_values_complete_at_backslashes_and_drives() {
+        let s = split(r"D:\Backup\Do", true);
+        assert_eq!((s.base.as_str(), s.prefix.as_str()), (r"D:\Backup\", "Do"));
+        let s = split("D:/Backup/", true);
+        assert_eq!((s.base.as_str(), s.prefix.as_str()), ("D:/Backup/", ""));
+        assert_eq!(split("", true).base, r"~\");
+        // OneDrive folders are cut at `/` only.
+        assert_eq!(split(r"a\b", false).base, "");
+        assert_eq!(local_parent(r"D:\"), Some(PathBuf::from(r"D:\")));
+        assert_eq!(local_parent(r"\Backup\"), None, "no drive");
+        let home = PathBuf::from(config::expand_tilde("~"));
+        assert_eq!(local_parent(r"~\"), Some(home));
+        let list = names(&["Documents", "Downloads"]);
+        let c = Cycle::start(&split(r"D:\Do", true), &list, false).unwrap();
+        assert_eq!(c.text(), r"D:\Documents\");
+    }
     #[test]
     fn prefixes_match_ignoring_case_and_hidden_folders_need_a_dot() {
         let list = names(&[

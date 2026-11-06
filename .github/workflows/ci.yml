@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +63,86 @@ jobs:
       # both systems: rclone's local backend differs between them.
       - name: Fixtures still decode the same
         run: just fixtures
+
+  # Real runs on Windows itself with a real rclone: the integration suite
+  # fakes rclone with /bin/sh scripts, so it runs on Unix only. A job with
+  # a one-way and a two-way local destination is added from flags and run
+  # twice, and the files are checked on each side.
+  smoke-windows:
+    name: Smoke (rclone, windows-latest)
+    runs-on: windows-latest
+    needs: test
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Install rclone (Chocolatey)
+        run: choco install rclone -y --no-progress
+      - name: rclone version
+        run: rclone version
+      - name: Build
+        run: cargo build
+      - name: Add a job and run it twice
+        env:
+          NO_COLOR: "1"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $of = "$PWD\target\debug\onefolder.exe"
+          $root = Join-Path $env:RUNNER_TEMP 'of'
+          $env:ONEFOLDER_CONFIG_DIR = "$root\config"
+          $env:ONEFOLDER_DATA_DIR = "$root\data"
+          function Check($what) { if ($LASTEXITCODE -ne 0) { throw "$what exited with $LASTEXITCODE" } }
+          function Expect($file, $text) {
+            if (-not (Test-Path $file)) { throw "missing: $file" }
+            $got = (Get-Content -Raw $file).Trim()
+            if ($got -ne $text) { throw "$file has '$got', expected '$text'" }
+          }
+          New-Item -ItemType Directory -Force "$root\src\Docs", "$root\copy", "$root\both" | Out-Null
+          Set-Content "$root\src\a.txt" 'one'
+          Set-Content "$root\src\Docs\b.txt" 'two'
+
+          & $of jobs add documents --source "$root\src" --local "$root\copy" --local "$root\both:two-way"
+          Check 'jobs add'
+          & $of jobs list
+          Check 'jobs list'
+
+          & $of run documents --yes
+          Check 'first run'
+          Expect "$root\copy\a.txt" 'one'
+          Expect "$root\copy\Docs\b.txt" 'two'
+          Expect "$root\both\Docs\b.txt" 'two'
+
+          # A change on the two-way side comes back; a new file goes out.
+          Start-Sleep -Seconds 2
+          Set-Content "$root\both\Docs\b.txt" 'changed'
+          Set-Content "$root\src\c.txt" 'three'
+          & $of run documents --yes
+          Check 'second run'
+          Expect "$root\src\Docs\b.txt" 'changed'
+          Expect "$root\copy\c.txt" 'three'
+          Expect "$root\both\c.txt" 'three'
+
+          & $of status
+          Check 'status'
+          $doctor = & $of doctor | Out-String
+          Write-Output $doctor
+          # The real rclone, not Chocolatey's launcher in chocolatey\bin.
+          if ($doctor -match '(?i)chocolatey\\bin\\rclone') { throw 'doctor names the launcher, not the real rclone' }
+      # Chocolatey's rclone.exe on PATH is a launcher (a shim); OneFolder
+      # must find the real rclone behind it, or Ctrl-C cannot stop rclone
+      # cleanly.
+      - name: Ctrl-C stops rclone cleanly (one-way and two-way)
+        if: ${{ !cancelled() }}
+        env:
+          ONEFOLDER_INTEGRATION: "1"
+        run: |
+          Write-Output "rclone.exe --shimgen-help says:"
+          rclone.exe --shimgen-help
+          cargo test --test windows -- --nocapture --test-threads 1
 
   # dist plans every target (macOS and Linux) from one machine.
   release-plan:

@@ -83,7 +83,7 @@ impl Drop for Registered {
 }
 
 /// The process ids of the registered children (for tests).
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn registered() -> Vec<u32> {
     CHILDREN.lock().map(|l| l.clone()).unwrap_or_default()
 }
@@ -103,7 +103,11 @@ fn kill_registered() {
             );
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    for pid in pids {
+        crate::win::terminate(pid);
+    }
+    #[cfg(not(any(unix, windows)))]
     drop(pids);
 }
 
@@ -194,6 +198,8 @@ pub async fn run_capture_detached(program: &Path, args: &[String]) -> Result<Cap
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
+    #[cfg(windows)]
+    command.creation_flags(crate::win::CREATE_NEW_PROCESS_GROUP);
     let output = command.output().await.map_err(|source| ExecError::Spawn {
         program: program.to_path_buf(),
         source,
@@ -448,10 +454,40 @@ impl Signals {
     }
 }
 
-#[cfg(not(unix))]
+/// The console events the dispatcher owns on Windows: Ctrl-C and
+/// Ctrl-Break, read as SIGINT, and the console window closing, read as
+/// SIGHUP (Windows allows a few seconds to clean up).
+#[cfg(windows)]
+struct Signals {
+    c: tokio::signal::windows::CtrlC,
+    brk: tokio::signal::windows::CtrlBreak,
+    close: tokio::signal::windows::CtrlClose,
+}
+
+#[cfg(windows)]
+impl Signals {
+    fn install() -> Option<Signals> {
+        use tokio::signal::windows::{ctrl_break, ctrl_c, ctrl_close};
+        Some(Signals {
+            c: ctrl_c().ok()?,
+            brk: ctrl_break().ok()?,
+            close: ctrl_close().ok()?,
+        })
+    }
+
+    async fn recv(&mut self) -> Option<i32> {
+        tokio::select! {
+            s = self.c.recv() => s.map(|()| 130),
+            s = self.brk.recv() => s.map(|()| 130),
+            s = self.close.recv() => s.map(|()| 129),
+        }
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 struct Signals;
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 impl Signals {
     fn install() -> Option<Signals> {
         Some(Signals)
@@ -830,6 +866,8 @@ pub async fn run_streaming_with_grace(
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
+    #[cfg(windows)]
+    command.creation_flags(crate::win::CREATE_NEW_PROCESS_GROUP);
     let mut log_file = None;
     if let Some(log) = log {
         log.command(program, args);
@@ -840,6 +878,7 @@ pub async fn run_streaming_with_grace(
         program: program.to_path_buf(),
         source,
     })?;
+    let tree = tree_of(&child);
 
     let (tx, mut rx) = mpsc::channel::<Event>(256);
     let reader = child.stderr.take().map(|stderr| {
@@ -891,7 +930,7 @@ pub async fn run_streaming_with_grace(
                 Some(event) => on(Progress::Event(event)),
                 None => open = false,
             },
-            waited = child.wait(), if status.is_none() => {
+            waited = wait_tree(&mut child, tree.as_ref()), if status.is_none() => {
                 status = Some(waited.map_err(|source| ExecError::Wait {
                     program: program.to_path_buf(),
                     source,
@@ -902,13 +941,13 @@ pub async fn run_streaming_with_grace(
                 presses += 1;
                 if presses == 1 {
                     if !send_interrupt(&child) {
-                        let _ = child.start_kill();
+                        kill_tree(&mut child, tree.as_ref());
                         killed = true;
                     }
                     kill_at = Some(Instant::now() + grace);
                     on(Progress::Stopping);
                 } else if !killed {
-                    let _ = child.start_kill();
+                    kill_tree(&mut child, tree.as_ref());
                     killed = true;
                     on(Progress::Killing);
                 }
@@ -916,7 +955,7 @@ pub async fn run_streaming_with_grace(
             () = sleep_until(deadline) => {
                 if status.is_none() {
                     // No exit within the grace period after SIGINT.
-                    let _ = child.start_kill();
+                    kill_tree(&mut child, tree.as_ref());
                     killed = true;
                     kill_at = None;
                     on(Progress::Killing);
@@ -945,6 +984,59 @@ pub async fn run_streaming_with_grace(
     })
 }
 
+/// The processes a child may start, held so they can be waited for and
+/// ended with it: a job object on Windows (see [`crate::win::Job`]), where
+/// rclone may be a launcher that starts the real rclone; nothing elsewhere,
+/// where rclone is the child itself.
+#[cfg(windows)]
+use crate::win::Job as Tree;
+
+#[cfg(not(windows))]
+#[allow(dead_code, reason = "never made off Windows")]
+struct Tree;
+
+#[cfg(not(windows))]
+impl Tree {
+    fn active(&self) -> u32 {
+        0
+    }
+
+    fn terminate(&self) {}
+}
+
+#[cfg(windows)]
+fn tree_of(child: &tokio::process::Child) -> Option<Tree> {
+    child.raw_handle().and_then(Tree::assign)
+}
+
+#[cfg(not(windows))]
+fn tree_of(_child: &tokio::process::Child) -> Option<Tree> {
+    None
+}
+
+/// Waits for the child, and then for every process it started that is
+/// still running (the real rclone behind a launcher, stopping cleanly).
+async fn wait_tree(
+    child: &mut tokio::process::Child,
+    tree: Option<&Tree>,
+) -> io::Result<ExitStatus> {
+    let status = child.wait().await?;
+    if let Some(tree) = tree {
+        while tree.active() > 0 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+    Ok(status)
+}
+
+/// Kills the child and every process it started.
+fn kill_tree(child: &mut tokio::process::Child, tree: Option<&Tree>) {
+    if let Some(tree) = tree {
+        tree.terminate();
+    }
+    let _ = child.start_kill();
+}
+
 async fn sleep_until(deadline: Option<Instant>) {
     match deadline {
         Some(at) => tokio::time::sleep_until(at).await,
@@ -963,7 +1055,15 @@ fn send_interrupt(child: &tokio::process::Child) -> bool {
     kill(Pid::from_raw(pid), Signal::SIGINT).is_ok()
 }
 
-#[cfg(not(unix))]
+/// Sends Ctrl-Break to the child's process group (it was started with one
+/// of its own), which rclone reads as SIGINT. False when it could not be
+/// sent.
+#[cfg(windows)]
+fn send_interrupt(child: &tokio::process::Child) -> bool {
+    child.id().is_some_and(crate::win::ctrl_break)
+}
+
+#[cfg(not(any(unix, windows)))]
 fn send_interrupt(_child: &tokio::process::Child) -> bool {
     false
 }
@@ -993,7 +1093,16 @@ fn stderr_handle() -> Stdio {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn stderr_handle() -> Stdio {
+    use std::os::windows::io::AsHandle;
+    match std::io::stderr().as_handle().try_clone_to_owned() {
+        Ok(handle) => Stdio::from(handle),
+        Err(_) => Stdio::null(),
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn stderr_handle() -> Stdio {
     Stdio::null()
 }

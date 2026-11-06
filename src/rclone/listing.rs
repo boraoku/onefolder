@@ -520,11 +520,13 @@ mod tests {
     }
 
     /// Runs a shell script as if it were rclone's `lsjson`.
+    #[cfg(unix)]
     async fn fake_listing(script: &str, listed: &AtomicU64) -> Result<Vec<Entry>, ListError> {
         let args = vec!["-c".to_string(), script.to_string()];
         list_streaming(Path::new("/bin/sh"), &args, "/fixture/dst", Some(listed)).await
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn streaming_listing_counts_entries_as_they_come() {
         // The real shape, one entry per line, and a last line with no line
@@ -561,6 +563,7 @@ mod tests {
         assert_eq!(listed.load(Ordering::Relaxed), 0);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn streaming_listing_reports_rclone_errors() {
         // Exit 3: the folder does not exist yet.

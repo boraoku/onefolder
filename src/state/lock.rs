@@ -422,14 +422,22 @@ mod tests {
         let paths = paths(dir.path());
         fs::create_dir_all(paths.runs_dir()).unwrap();
         let path = lock_path(&paths, "documents");
-        // Process 1 (launchd) is alive and is not OneFolder.
-        fs::write(&path, r#"{"pid":1,"started":"2026-10-13T00:00:00Z"}"#).unwrap();
+        // Process 1 (launchd, init) is alive and is not OneFolder; on
+        // Windows process 4, System.
+        let other = if cfg!(windows) { 4 } else { 1 };
+        fs::write(
+            &path,
+            format!(r#"{{"pid":{other},"started":"2026-10-13T00:00:00Z"}}"#),
+        )
+        .unwrap();
         let (lock, removed) = acquire(&paths, "documents").await.unwrap();
         let removed = removed.unwrap();
         assert!(removed.pid_reused);
         assert_eq!(
             removed.note(),
-            "Removed a stale run lock left by process 1, which is no longer a OneFolder run"
+            format!(
+                "Removed a stale run lock left by process {other}, which is no longer a OneFolder run"
+            )
         );
         drop(lock);
     }

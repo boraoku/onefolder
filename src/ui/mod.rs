@@ -95,8 +95,10 @@ pub fn shorten_path(path: &str, max: usize) -> String {
     if max <= 1 {
         return "…".to_string();
     }
-    // `account:path`: keep the account, shorten the rest.
-    if !path.starts_with('/') {
+    // `account:path`: keep the account, shorten the rest. A Windows path
+    // (`D:\...`) is not one.
+    let windows = crate::platform::windows_drive_root(path).is_some();
+    if !path.starts_with('/') && !windows {
         if let Some((account, rest)) = path.split_once(':') {
             let prefix = format!("{account}:");
             if !account.contains('/') && width(&prefix) + 8 <= max {
@@ -104,16 +106,22 @@ pub fn shorten_path(path: &str, max: usize) -> String {
             }
         }
     }
-    let parts: Vec<&str> = path.split('/').collect();
+    // A Windows path written with backslashes is cut at them.
+    let sep = if windows && path.contains('\\') {
+        '\\'
+    } else {
+        '/'
+    };
+    let parts: Vec<&str> = path.split(sep).collect();
     let tail = if parts.len() > 2 {
-        parts[parts.len() - 2..].join("/")
+        parts[parts.len() - 2..].join(&sep.to_string())
     } else {
         String::new()
     };
     // Room for a few columns of the start, the ellipsis and the slash.
     if !tail.is_empty() && width(&tail) + 2 + 4 <= max {
         let head = front(path, max - width(&tail) - 2);
-        return format!("{head}…/{tail}");
+        return format!("{head}…{sep}{tail}");
     }
     format!("…{}", back(path, max - 1))
 }
@@ -124,7 +132,7 @@ pub fn fit_text(text: &str, max: usize) -> String {
     if width(text) <= max {
         return text.to_string();
     }
-    if text.starts_with('/') || text.starts_with('~') {
+    if crate::platform::looks_like_local_path(text) {
         return shorten_path(text, max);
     }
     if max == 0 {

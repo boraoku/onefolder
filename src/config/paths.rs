@@ -75,14 +75,15 @@ fn non_empty_env(name: &str) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
-/// Shortens a path under the home directory to `~/...` for display.
+/// Shortens a path under the home directory to `~/...` for display
+/// (`~\...` on Windows).
 pub fn tilde(path: &Path) -> String {
     if let Some(home) = directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf()) {
         if let Ok(rest) = path.strip_prefix(&home) {
             return if rest.as_os_str().is_empty() {
                 "~".to_string()
             } else {
-                format!("~/{}", rest.display())
+                format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display())
             };
         }
     }
@@ -93,15 +94,19 @@ fn home_dir() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|b| b.home_dir().to_path_buf())
 }
 
-/// Expands a leading `~` or `~/` to the home directory. Other text, and
-/// `~user` forms, are returned unchanged.
+/// Expands a leading `~` or `~/` (also `~\` on Windows) to the home
+/// directory. Other text, and `~user` forms, are returned unchanged.
 pub fn expand_tilde(text: &str) -> String {
     let rest = match text.strip_prefix('~') {
-        Some(rest) if rest.is_empty() || rest.starts_with('/') => rest,
+        Some(rest) if rest.is_empty() || rest.starts_with(std::path::is_separator) => rest,
         _ => return text.to_string(),
     };
     match home_dir() {
-        Some(home) => format!("{}{rest}", home.display()),
+        Some(home) if rest.is_empty() => home.display().to_string(),
+        Some(home) => home
+            .join(rest.trim_start_matches(std::path::is_separator))
+            .display()
+            .to_string(),
         None => text.to_string(),
     }
 }
@@ -109,7 +114,8 @@ pub fn expand_tilde(text: &str) -> String {
 /// Turns a path the user typed into the absolute form the config stores:
 /// surrounding spaces trimmed, `~` expanded, a relative path joined to the
 /// current directory, and `.` and `..` resolved lexically (symlinks are
-/// kept as typed). `None` for empty text.
+/// kept as typed). The drive (`D:`) or share of a Windows path is kept;
+/// `..` never climbs above the root. `None` for empty text.
 pub fn absolute(text: &str) -> Option<PathBuf> {
     use std::path::Component;
     let text = text.trim();
@@ -117,19 +123,23 @@ pub fn absolute(text: &str) -> Option<PathBuf> {
         return None;
     }
     let expanded = PathBuf::from(expand_tilde(text));
+    // On Windows `\Users\x` (a root but no drive) is not absolute: joined
+    // to the current directory it takes that directory's drive.
     let joined = if expanded.is_absolute() {
         expanded
     } else {
         env::current_dir().ok()?.join(expanded)
     };
-    let mut out = PathBuf::from("/");
+    let mut out = PathBuf::new();
     for component in joined.components() {
         match component {
+            Component::Prefix(prefix) => out.push(prefix.as_os_str()),
+            Component::RootDir => out.push(Component::RootDir),
             Component::Normal(part) => out.push(part),
             Component::ParentDir => {
                 out.pop();
             }
-            Component::CurDir | Component::RootDir | Component::Prefix(_) => {}
+            Component::CurDir => {}
         }
     }
     Some(out)
@@ -149,9 +159,25 @@ mod tests {
         );
         assert_eq!(expand_tilde("~bora/x"), "~bora/x");
         assert_eq!(expand_tilde("/a/~"), "/a/~");
-        assert_eq!(tilde(&home.join("Documents")), "~/Documents");
+        assert_eq!(
+            tilde(&home.join("Documents")),
+            format!("~{}Documents", std::path::MAIN_SEPARATOR)
+        );
+        assert_eq!(tilde(&home), "~");
     }
 
+    #[cfg(windows)]
+    #[test]
+    fn tilde_expansion_on_windows() {
+        let home = home_dir().unwrap();
+        assert_eq!(
+            expand_tilde(r"~\Documents"),
+            home.join("Documents").display().to_string()
+        );
+        assert_eq!(tilde(&home.join("Documents")), r"~\Documents");
+    }
+
+    #[cfg(unix)]
     #[test]
     fn absolute_paths() {
         assert_eq!(absolute("  "), None);
@@ -160,5 +186,33 @@ mod tests {
         assert_eq!(absolute("~/x"), Some(home_dir().unwrap().join("x")));
         let rel = absolute("some/where").unwrap();
         assert!(rel.is_absolute() && rel.ends_with("some/where"), "{rel:?}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn absolute_paths_keep_the_drive() {
+        assert_eq!(absolute("  "), None);
+        assert_eq!(
+            absolute(r"D:\Backup\.\Docs\..\Photos\"),
+            Some(PathBuf::from(r"D:\Backup\Photos"))
+        );
+        assert_eq!(
+            absolute("D:/Backup/Docs"),
+            Some(PathBuf::from(r"D:\Backup\Docs"))
+        );
+        assert_eq!(absolute(r"D:\.."), Some(PathBuf::from(r"D:\")));
+        assert_eq!(
+            absolute(r"\\nas\share\Backup\..\Docs"),
+            Some(PathBuf::from(r"\\nas\share\Docs"))
+        );
+        assert_eq!(absolute(r"~\x"), Some(home_dir().unwrap().join("x")));
+        // A root with no drive takes the current directory's drive.
+        let cwd = env::current_dir().unwrap();
+        let drive = cwd.components().next().unwrap();
+        let rooted = absolute(r"\Users\x").unwrap();
+        assert_eq!(rooted.components().next(), Some(drive), "{rooted:?}");
+        assert!(rooted.ends_with(r"Users\x"), "{rooted:?}");
+        let rel = absolute("some/where").unwrap();
+        assert!(rel.is_absolute() && rel.ends_with(r"some\where"), "{rel:?}");
     }
 }

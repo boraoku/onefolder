@@ -1,3 +1,7 @@
+// Many of these tests use Unix paths and run on Unix only, as do the
+// helpers and imports only they use.
+#![cfg_attr(not(unix), allow(unused_imports, dead_code))]
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -14,6 +18,7 @@ fn load(name: &str) -> Result<ConfigFile, ConfigError> {
     ConfigFile::load(&fixture(name))
 }
 
+#[cfg(unix)]
 #[test]
 fn sample_loads_with_the_design_values() {
     let file = load("sample.toml").unwrap();
@@ -52,6 +57,7 @@ fn sample_loads_with_the_design_values() {
     assert_eq!(c.destination_count(), 2);
 }
 
+#[cfg(unix)]
 #[test]
 fn sample_round_trips_byte_for_byte() {
     let original = fs::read_to_string(fixture("sample.toml")).unwrap();
@@ -59,6 +65,7 @@ fn sample_round_trips_byte_for_byte() {
     assert_eq!(file.render().unwrap(), original);
 }
 
+#[cfg(unix)]
 #[test]
 fn save_and_reload_through_disk() {
     let dir = tempfile::tempdir().unwrap();
@@ -74,6 +81,7 @@ fn save_and_reload_through_disk() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn extras_round_trip_unchanged() {
     let original = fs::read_to_string(fixture("extras.toml")).unwrap();
@@ -81,6 +89,7 @@ fn extras_round_trip_unchanged() {
     assert_eq!(file.render().unwrap(), original);
 }
 
+#[cfg(unix)]
 #[test]
 fn edits_keep_comments_and_unknown_keys() {
     let mut file = load("extras.toml").unwrap();
@@ -146,6 +155,7 @@ fn edits_keep_comments_and_unknown_keys() {
     });
 }
 
+#[cfg(unix)]
 #[test]
 fn removing_items_drops_their_tables_only() {
     let mut file = load("sample.toml").unwrap();
@@ -209,6 +219,7 @@ fn syntax_errors_are_reported() {
 }
 
 /// Each invalid fixture, with a phrase the message must contain.
+#[cfg(unix)]
 #[test]
 fn every_validation_rule_has_a_failing_fixture() {
     let cases = [
@@ -427,6 +438,7 @@ fn dest_ids(job: &Job) -> Vec<&str> {
     job.destinations.iter().map(|d| d.id()).collect()
 }
 
+#[cfg(unix)]
 #[test]
 fn reversed_destinations_are_saved_in_the_new_order() {
     let mut file = load("sample.toml").unwrap();
@@ -438,6 +450,7 @@ fn reversed_destinations_are_saved_in_the_new_order() {
     assert!(text.contains("# stable short id; names log and bisync directories"));
 }
 
+#[cfg(unix)]
 #[test]
 fn reversed_jobs_are_saved_in_the_new_order() {
     let mut file = three_jobs();
@@ -455,6 +468,7 @@ fn reversed_jobs_are_saved_in_the_new_order() {
     assert!(text.ends_with("[extra]\nkept = true\n"), "{text}");
 }
 
+#[cfg(unix)]
 #[test]
 fn a_job_inserted_at_the_front_comes_first() {
     let mut file = three_jobs();
@@ -476,6 +490,7 @@ fn a_job_inserted_at_the_front_comes_first() {
     assert!(text.find("\"first\"").unwrap() < text.find("# Job a.").unwrap());
 }
 
+#[cfg(unix)]
 #[test]
 fn a_new_job_never_takes_another_jobs_table_through_an_id() {
     let mut file = three_jobs();
@@ -499,6 +514,7 @@ fn a_new_job_never_takes_another_jobs_table_through_an_id() {
     assert_eq!(text.matches("owner").count(), 1);
 }
 
+#[cfg(unix)]
 #[test]
 fn a_renamed_job_keeps_its_table_ids_and_comments() {
     let mut file = three_jobs();
@@ -512,6 +528,7 @@ fn a_renamed_job_keeps_its_table_ids_and_comments() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn removing_a_job_keeps_its_neighbours_comments() {
     let mut file = three_jobs();
@@ -525,6 +542,7 @@ fn removing_a_job_keeps_its_neighbours_comments() {
     assert!(!text.contains("d-0001"));
 }
 
+#[cfg(unix)]
 #[test]
 fn defaults_are_not_written_unless_already_present() {
     let mut file = three_jobs();
@@ -544,6 +562,7 @@ fn defaults_are_not_written_unless_already_present() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn new_keys_follow_the_indentation_of_their_table() {
     let mut file = load("sample.toml").unwrap();
@@ -578,6 +597,7 @@ fn new_keys_follow_the_indentation_of_their_table() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn volumes_rule_is_not_fooled_by_case_or_dots() {
     for path in [
@@ -595,6 +615,7 @@ fn volumes_rule_is_not_fooled_by_case_or_dots() {
     assert!(ConfigFile::parse(Path::new("c.toml"), ok).is_ok());
 }
 
+#[cfg(unix)]
 #[test]
 fn both_destination_types_and_volume_fields_round_trip() {
     let original = fs::read_to_string(fixture("both-destination-types.toml")).unwrap();
@@ -633,6 +654,7 @@ fn both_destination_types_and_volume_fields_round_trip() {
     assert_eq!(again.jobs[0].destinations[1].identity(), Some(strong));
 }
 
+#[cfg(unix)]
 #[test]
 fn a_device_and_name_satisfy_the_volumes_rule() {
     let text = "[[jobs]]\nname = \"a\"\nsource = \"/a\"\n[[jobs.destinations]]\nid = \"d-0001\"\ntype = \"local\"\npath = \"/Volumes/BACKUP/x\"\nvolume_device = \"/dev/disk4s1\"\nvolume_name = \"BACKUP\"\n";
@@ -641,6 +663,7 @@ fn a_device_and_name_satisfy_the_volumes_rule() {
     assert_eq!(id.mount_point, "/Volumes/BACKUP", "derived from the path");
 }
 
+#[cfg(unix)]
 #[test]
 fn renaming_a_job_keeps_its_destination_ids_through_a_save() {
     let dir = tempfile::tempdir().unwrap();
@@ -664,6 +687,7 @@ fn renaming_a_job_keeps_its_destination_ids_through_a_save() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn validate_job_needs_no_other_jobs() {
     let job = Job::new("Bad", "rel");
@@ -713,6 +737,7 @@ fn accounts_are_added_and_removed_with_delta() {
     assert!(again.config.accounts[0].delta);
 }
 
+#[cfg(unix)]
 #[test]
 fn an_empty_onedrive_path_is_the_drive_root() {
     let text = "[[accounts]]\nlabel = \"work\"\nremote = \"onefolder-work\"\ndrive_type = \"business\"\n[[jobs]]\nname = \"a\"\nsource = \"/a\"\n[[jobs.destinations]]\nid = \"d-0001\"\ntype = \"onedrive\"\naccount = \"work\"\npath = \"\"\nmode = \"one-way\"\n";
@@ -723,6 +748,7 @@ fn an_empty_onedrive_path_is_the_drive_root() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn a_partition_uuid_satisfies_the_volumes_rule() {
     let text = "[[jobs]]\nname = \"a\"\nsource = \"/Volumes/S/src\"\nsource_volume_partition_uuid = \"P-2\"\n[[jobs.destinations]]\nid = \"d-0001\"\ntype = \"local\"\npath = \"/Volumes/BACKUP/x\"\nvolume_partition_uuid = \"P-1\"\n";
@@ -761,6 +787,7 @@ fn overlaps_through_a_symlink_are_found_on_disk() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn copy_hidden_defaults_to_off_and_round_trips_with_comments() {
     let text = "version = 1\n\n# my jobs\n[[jobs]]\nname = \"docs\"   # the main one\nsource = \"/a\"\n\n[[jobs]]\nname = \"code\"\nsource = \"/b\"\ncopy_hidden = false   # leave dot files out\n";
@@ -809,4 +836,32 @@ fn copy_hidden_defaults_to_off_and_round_trips_with_comments() {
     let text = file.render().unwrap();
     assert_eq!(text.matches("copy_hidden").count(), 1, "{text}");
     assert!(text.contains("copy_hidden = true"), "{text}");
+}
+
+/// On Windows the drive is part of the path: the same folders on two
+/// drives never overlap, and `\?\D:\` (as canonicalize writes it) is the
+/// same drive as `D:\`.
+#[cfg(windows)]
+#[test]
+fn folders_on_two_windows_drives_never_overlap() {
+    let o = |a: &str, b: &str| overlap(Path::new(a), Path::new(b));
+    assert_eq!(
+        o(r"C:\Users\bora\Documents", r"D:\Users\bora\Documents"),
+        None
+    );
+    assert_eq!(o(r"C:\Docs", r"D:\Docs\Backup"), None);
+    assert_eq!(
+        o(r"C:\Docs", r"c:\docs\Backup"),
+        Some("is inside the source folder")
+    );
+    assert_eq!(
+        o(r"\\?\D:\Docs", r"D:\Docs"),
+        Some("is the source folder itself")
+    );
+    assert_eq!(
+        o(r"D:\..\Docs", r"D:\Docs"),
+        Some("is the source folder itself")
+    );
+    assert_eq!(o(r"D:\Docs", r"D:\"), Some("contains the source folder"));
+    assert_eq!(o(r"\\nas\share\Docs", r"\\nas\other\Docs"), None);
 }

@@ -2,7 +2,7 @@
 name = "onefolder"
 version = "0.4.2"
 edition = "2021"
-description = "Sync local folders to OneDrive and external drives with rclone, from a calm terminal app for macOS, Linux and WSL"
+description = "Sync local folders to OneDrive and external drives with rclone, from a calm terminal app for macOS, Linux and Windows"
 publish = false
 license = "MIT"
 repository = "https://github.com/boraoku/onefolder"
@@ -42,6 +42,21 @@ unicode-width = "0.2.2"
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31.3", features = ["signal"] }
 
+# The Windows system calls in src/win.rs (processes, Ctrl-Break) and
+# src/volume/windows.rs (drive identity). Already in the tree through tokio.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
+
 # Volume identity (statfs and `diskutil info -plist`) is macOS only.
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = "1.10.1"
@@ -51,6 +66,10 @@ assert_cmd = "2.2.2"
 insta = { version = "1.49.0", features = ["json"] }
 predicates = "3.1.4"
 tempfile = "3.27.0"
+
+# tests/windows.rs presses Ctrl-Break in OneFolder's console group.
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
 
 # The profile release builds use (dist builds with it on GitHub Actions).
 [profile.dist]

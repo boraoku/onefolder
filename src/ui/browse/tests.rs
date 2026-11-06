@@ -148,6 +148,7 @@ fn the_filter_narrows_the_list_like_the_whole_list_view() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn space_chooses_the_highlighted_folder_and_c_this_one() {
     let docs = format!("{}/Documents", home());
@@ -522,6 +523,7 @@ fn render(b: &Browser, width: u16) -> String {
     terminal.backend().to_string()
 }
 
+#[cfg(unix)]
 fn snapshot(name: &str, value: String) {
     insta::with_settings!({
         snapshot_path => concat!(env!("CARGO_MANIFEST_DIR"), "/tests/snapshots"),
@@ -531,6 +533,7 @@ fn snapshot(name: &str, value: String) {
     });
 }
 
+#[cfg(unix)]
 #[test]
 fn renders_at_80_and_120_columns() {
     let b = sample();
