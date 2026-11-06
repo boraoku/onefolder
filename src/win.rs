@@ -97,12 +97,12 @@ pub fn boot_time() -> Option<i64> {
 }
 
 /// A job object holding a child and every process it starts, so the
-/// whole tree can be waited for and ended. rclone is often not started
-/// directly: a Chocolatey or Scoop `rclone.exe` is a launcher (a "shim")
-/// that starts the real rclone as its own child. Ctrl-Break reaches both,
-/// the shim ends at once, and the real rclone goes on stopping cleanly;
-/// only the job knows when it has. Closing the job (dropping this) ends
-/// whatever is still in it, as `kill_on_drop` does for the child alone.
+/// whole tree is waited for and ended together: a run is over only when
+/// nothing it started is left, a kill ends them all, and closing the job
+/// (dropping this) ends whatever is still in it, as `kill_on_drop` does
+/// for the child alone. rclone itself starts no processes; a launcher in
+/// front of it would (see `rclone::detect`, which runs the real rclone
+/// behind Scoop's and Chocolatey's).
 pub struct Job(Handle);
 
 impl Job {
