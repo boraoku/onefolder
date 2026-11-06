@@ -1,8 +1,8 @@
 <div align="center">
   <h1>OneFolder</h1>
-  <p><b>Keep local folders in sync with OneDrive accounts and external drives, one-way or two-way, from a calm terminal app for macOS, Linux and Windows (WSL).</b></p>
+  <p><b>Keep local folders in sync with OneDrive accounts and external drives, one-way or two-way, from a calm terminal app for macOS, Linux and Windows.</b></p>
   <a href="https://github.com/boraoku/onefolder/releases"><img src="https://img.shields.io/github/v/release/boraoku/onefolder?label=version&style=flat-square" alt="Version"></a>
-  <a href="https://github.com/boraoku/onefolder/releases"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20WSL-lightgrey?style=flat-square" alt="Platforms"></a>
+  <a href="https://github.com/boraoku/onefolder/releases"><img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey?style=flat-square" alt="Platforms"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-blue.svg?style=flat-square" alt="Licence"></a>
   <a href="https://github.com/boraoku/onefolder/commits"><img src="https://img.shields.io/github/commit-activity/m/boraoku/onefolder?style=flat-square" alt="Commits"></a>
 </div>
@@ -11,7 +11,7 @@
   <img src="./docs/img/run.png" alt="OneFolder transferring an engineering folder to OneDrive, with per-file progress" width="1000" />
 </p>
 
-OneFolder keeps local folders in sync with OneDrive accounts and external drives. It is a single terminal program for macOS, Linux and Windows (through WSL) that drives [rclone](https://rclone.org) to do the copying, and adds the parts that make a sync safe to run every day: a preview before anything changes, a check that an external drive really is the drive you set up, a question before a deleted folder is deleted on the other side, and a log of every run.
+OneFolder keeps local folders in sync with OneDrive accounts and external drives. It is a single terminal program for macOS, Linux and Windows (natively, or through WSL) that drives [rclone](https://rclone.org) to do the copying, and adds the parts that make a sync safe to run every day: a preview before anything changes, a check that an external drive really is the drive you set up, a question before a deleted folder is deleted on the other side, and a log of every run.
 
 Each job has one local source folder and one or more destinations. Each destination is either a folder on a OneDrive account or a local folder (usually on an external drive), and each one is synced either one-way or two-way.
 
@@ -30,7 +30,7 @@ Each job has one local source folder and one or more destinations. Each destinat
 
 ## Quick Start
 
-OneFolder runs on macOS (Apple silicon or Intel), on Linux (x86_64 or ARM64, with glibc 2.35 or newer: Ubuntu 22.04, Debian 12, Fedora 36 and later; RHEL, Rocky and Alma 9 and Debian 11 are older, so build from source there) and on Windows through WSL (WSL 2, or WSL 1), and needs rclone 1.66 or newer on your `PATH`. Drive checks on Linux need util-linux's `lsblk` 2.33 or newer (it lacks the `PATH` column before that, as on Rocky 8). On a Mac, install rclone with Homebrew (`brew install rclone`); on Linux and WSL, with rclone's own installer from [rclone.org/install](https://rclone.org/install/) (`sudo -v ; curl https://rclone.org/install.sh | sudo bash`), or with Homebrew if you use it there. Your distribution's package may be older than 1.66. The Homebrew formula below installs rclone along with OneFolder. OneFolder itself never installs, updates or downloads rclone. If rclone is missing or too old, every command that needs it says so and exits with code 2.
+OneFolder runs on macOS (Apple silicon or Intel), on Linux (x86_64 or ARM64, with glibc 2.35 or newer: Ubuntu 22.04, Debian 12, Fedora 36 and later; RHEL, Rocky and Alma 9 and Debian 11 are older, so build from source there) and on Windows 10 and 11, either natively in Windows Terminal or PowerShell (see [Windows](#windows); for now built from source) or through WSL (WSL 2, or WSL 1), and needs rclone 1.66 or newer on your `PATH`. On Windows itself, install rclone with `winget install Rclone.Rclone`, or download it from [rclone.org/downloads](https://rclone.org/downloads/) and put `rclone.exe` in a folder on your `PATH`. Drive checks on Linux need util-linux's `lsblk` 2.33 or newer (it lacks the `PATH` column before that, as on Rocky 8). On a Mac, install rclone with Homebrew (`brew install rclone`); on Linux and WSL, with rclone's own installer from [rclone.org/install](https://rclone.org/install/) (`sudo -v ; curl https://rclone.org/install.sh | sudo bash`), or with Homebrew if you use it there. Your distribution's package may be older than 1.66. The Homebrew formula below installs rclone along with OneFolder. OneFolder itself never installs, updates or downloads rclone. If rclone is missing or too old, every command that needs it says so and exits with code 2.
 
 **Install via Homebrew**
 
@@ -104,7 +104,7 @@ Each GitHub release also has a universal binary for both Apple silicon and Intel
 
 **From source**
 
-You need a Rust toolchain from [rustup](https://rustup.rs) (`brew install rustup && rustup default stable` on a Mac; the installer on rustup.rs on Linux and WSL, with a C compiler such as `build-essential`). The repository's `rust-toolchain.toml` pins the exact version (1.93.1), and rustup installs it on the first build.
+You need a Rust toolchain from [rustup](https://rustup.rs) (`brew install rustup && rustup default stable` on a Mac; the installer on rustup.rs on Linux and WSL, with a C compiler such as `build-essential`; `rustup-init.exe` from rustup.rs on Windows, with the Visual Studio Build Tools it offers to install). The repository's `rust-toolchain.toml` pins the exact version (1.93.1), and rustup installs it on the first build.
 
 ```bash
 git clone https://github.com/boraoku/onefolder.git
@@ -113,6 +113,8 @@ cargo install --path .        # installs onefolder into ~/.cargo/bin
 # or
 cargo build --release         # leaves the binary at target/release/onefolder
 ```
+
+The same commands work in PowerShell on Windows, where the binary is `onefolder.exe`.
 
 </details>
 
@@ -460,6 +462,17 @@ OneFolder works the same on Linux and under WSL as on a Mac, with these differen
 - **Signing in.** `accounts add` and `accounts reconnect` let rclone open your browser, with `xdg-open` on a Linux desktop. Under WSL, install `wslu` so rclone can open the Windows browser with `wslview`, or copy the link rclone prints into a browser yourself. On a machine with no browser at all (a server over SSH), OneFolder does not support `rclone authorize "onedrive"` on another machine; instead add the account on a machine with a browser, copy its `~/.config/rclone/rclone.conf` across (it holds the `onefolder-<label>` remotes and their tokens), and add the same `[[accounts]]` entries to `~/.config/onefolder/config.toml` there.
 - **Words.** Messages say "this computer" where a Mac says "this Mac", and the two-way counts say `2 here` for `2 to Mac`.
 
+### Windows
+
+OneFolder runs on Windows itself, in Windows Terminal or PowerShell, with no WSL. It works as on Linux, with these differences.
+
+- **Paths.** Folders are written as Windows writes them, `D:\Backup\Documents` (`D:/Backup/Documents` is read the same way), and `~` is your user folder (`~\Documents`). A path needs its drive: `\Backup` alone is not a full path. Tab completion and the folder browser work at `\` as well as `/`, and `v` in the browser goes to the first drive after the system drive.
+- **External drives.** Any drive letter other than the system drive (`C:`, as `%SystemDrive%` says) is a drive, and so is a network share (`\\nas\share`). A destination on the system drive is allowed and simply not checked. A drive is identified by its Windows volume GUID, read straight from Windows (no PowerShell, so a check is quick), and its label. Windows keeps the GUID whatever letter the drive gets, so a drive recorded as `D:` that comes back as `E:` is reported as mounted somewhere else, with the path to change to. A network drive has no GUID and is identified, weakly, by its share. A drive set up under WSL records the same GUID.
+- **Case in names.** NTFS, exFAT and FAT ignore case, as on a Mac, so a rename that only changes case is not a move.
+- **Stopping a run.** Ctrl-C stops rclone cleanly, as on the other systems: OneFolder starts rclone in a console group of its own and asks it to stop (with Ctrl-Break, which rclone reads as an interrupt). Closing the terminal window asks rclone to stop too, but Windows ends the programs a few seconds later, which may be too soon for a two-way run to finish cleanly, so stop a run with Ctrl-C first.
+- **Words.** Messages name `C:` "the system drive".
+- **Files.** OneFolder keeps its files where it does elsewhere, under your user folder: `%USERPROFILE%\.config\onefolder` and `%USERPROFILE%\.local\share\onefolder`. rclone keeps its own config where `rclone config file` says (usually `%APPDATA%\rclone\rclone.conf`).
+
 ### Status and doctor
 
 `onefolder status` shows the last run of every destination, the log of each run, and any folders on hold. `onefolder doctor` checks rclone, every account, every job's source and destinations, and the data files, and says what to run for each problem; see [Troubleshooting](#troubleshooting). It also shows the number of logs, their size, the oldest and newest, and how many `--prune-logs` would remove.
@@ -575,6 +588,16 @@ WantedBy=timers.target
 
 Start it with `systemctl --user daemon-reload && systemctl --user enable --now onefolder.timer`; `systemctl --user list-timers` shows when it runs next, and `journalctl --user -u onefolder` shows what each run printed (newline-delimited JSON, as above). A user timer runs while you are logged in; `loginctl enable-linger $USER` lets it run when you are not. The notes above about unattended runs apply as they are.
 
+#### Windows: Task Scheduler
+
+In Task Scheduler, create a task with a daily trigger whose action starts `onefolder.exe` by its full path, with the arguments `run --all --yes`. The same as a single command, from PowerShell or `cmd`:
+
+```bat
+schtasks /Create /TN "OneFolder" /SC DAILY /ST 02:30 /TR "C:\Users\you\.cargo\bin\onefolder.exe run --all --yes"
+```
+
+rclone must be on your user's `PATH`, and a drive the job writes to plugged in, when the task runs.
+
 #### WSL: Windows Task Scheduler
 
 WSL has no scheduler of its own running while it is closed, so let Windows start the run. In Task Scheduler, create a task with a daily trigger whose action starts `wsl.exe` with the arguments `-d Ubuntu -- /home/you/.cargo/bin/onefolder run --all --yes` (the distribution's name as `wsl -l` shows it, and the full path `which onefolder` prints inside WSL: `wsl.exe` runs the command without a login shell, so `~/.cargo/bin` is not on its `PATH`). The same as a single command, from PowerShell or `cmd`:
@@ -646,10 +669,10 @@ onefolder completion fish > ~/.config/fish/completions/onefolder.fish
 
 ### Uninstall
 
-1. Unload and delete any LaunchAgents you made: `launchctl bootout gui/$(id -u)/local.onefolder.documents`, then remove the file from `~/Library/LaunchAgents`. On Linux, stop any timers (`systemctl --user disable --now onefolder-documents.timer`) and remove their files from `~/.config/systemd/user`; under WSL, delete any task you made in Task Scheduler.
+1. Unload and delete any LaunchAgents you made: `launchctl bootout gui/$(id -u)/local.onefolder.documents`, then remove the file from `~/Library/LaunchAgents`. On Linux, stop any timers (`systemctl --user disable --now onefolder-documents.timer`) and remove their files from `~/.config/systemd/user`; on Windows and under WSL, delete any task you made in Task Scheduler.
 2. Remove the accounts' rclone remotes, either with `onefolder accounts remove <label>` for each account (add `--yes` when running it from a script or with `--json`), or with `rclone config delete onefolder-<label>`.
 3. Remove the binary: `brew uninstall onefolder` (and `brew untap boraoku/apps`), `rm ~/.cargo/bin/onefolder` for the shell installer, or `cargo uninstall onefolder` for a source install.
-4. Remove the config and data: `rm -rf ~/.config/onefolder ~/.local/share/onefolder`. The folders are the same on macOS, Linux and WSL. This deletes the run logs and the two-way sync state; your synced files are not touched.
+4. Remove the config and data: `rm -rf ~/.config/onefolder ~/.local/share/onefolder`. The folders are the same on macOS, Linux and WSL, and under your user folder on Windows (in PowerShell: `Remove-Item -Recurse ~\.config\onefolder, ~\.local\share\onefolder`). This deletes the run logs and the two-way sync state; your synced files are not touched.
 
 ### Releasing
 

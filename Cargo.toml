@@ -2,7 +2,7 @@
 name = "onefolder"
 version = "0.4.2"
 edition = "2021"
-description = "Sync local folders to OneDrive and external drives with rclone, from a calm terminal app for macOS, Linux and WSL"
+description = "Sync local folders to OneDrive and external drives with rclone, from a calm terminal app for macOS, Linux and Windows"
 publish = false
 license = "MIT"
 repository = "https://github.com/boraoku/onefolder"

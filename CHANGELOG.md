@@ -6,6 +6,20 @@ versioning; the release workflow publishes a version when its tag (such as
 the Unreleased section to `## <version> - <date>`, which dist uses as the
 release notes.
 
+## Unreleased
+
+### Added
+
+- OneFolder runs on Windows itself, in Windows Terminal or PowerShell,
+  without WSL (built from source for now). Paths are Windows paths
+  (`D:\Backup\Documents`, `~\Documents`); any drive letter but the system
+  drive's, and any network share, is a drive. Drives are identified by
+  their Windows volume GUID, read straight from Windows, so a drive that
+  comes back under another letter is found. Ctrl-C stops rclone cleanly
+  (Ctrl-Break to its own console group), and stale run and bisync locks
+  are recognised from a process snapshot. Lint and tests run on Windows
+  in CI too.
+
 ## 0.4.2 - 2026-11-02
 
 ### Changed

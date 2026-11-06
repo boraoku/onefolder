@@ -1524,6 +1524,7 @@ pub fn path_hint(value: &str, missing_ok: bool) -> Option<(String, Tone)> {
 mod tests {
     use super::*;
     use ratatui::backend::TestBackend;
+    #[cfg(unix)]
     use ratatui::Terminal;
 
     fn key(code: KeyCode) -> KeyEvent {
