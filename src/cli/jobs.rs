@@ -2252,4 +2252,18 @@ mod tests {
         );
         assert!(parse_local("  ").is_err());
     }
+
+    /// The drive's colon is part of the path, not a mode.
+    #[cfg(windows)]
+    #[test]
+    fn local_flag_values_on_windows() {
+        assert_eq!(
+            parse_local(r"D:\Backup\Docs:two-way").unwrap(),
+            (PathBuf::from(r"D:\Backup\Docs"), Mode::TwoWay)
+        );
+        assert_eq!(
+            parse_local(r"D:\Backup\x\..\Docs").unwrap(),
+            (PathBuf::from(r"D:\Backup\Docs"), Mode::OneWay)
+        );
+    }
 }
