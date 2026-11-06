@@ -1188,6 +1188,7 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
     #[test]
     fn adds_a_job_with_both_destination_types() {
         let source = tempfile::tempdir().unwrap();
@@ -1277,6 +1278,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_drive_without_uuid_warns() {
         let mut d = Driver::new(ctx());
@@ -1297,6 +1299,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn an_unplugged_drive_keeps_the_destination_form_open() {
         let mut d = Driver::new(ctx());
@@ -1317,6 +1320,7 @@ mod tests {
         assert!(d.form.sub.is_none());
     }
 
+    #[cfg(unix)]
     #[test]
     fn validation_marks_name_and_source() {
         let mut d = Driver::new(ctx());
@@ -1378,6 +1382,7 @@ mod tests {
         job
     }
 
+    #[cfg(unix)]
     #[test]
     fn editing_keeps_ids_and_reorders_and_removes() {
         let mut d = Driver::new(Context {
@@ -1420,6 +1425,7 @@ mod tests {
         assert_eq!(job.excludes, vec![".DS_Store"]);
     }
 
+    #[cfg(unix)]
     #[test]
     fn copy_hidden_files_is_a_picker_after_the_excludes() {
         let mut d = Driver::new(Context {
@@ -1501,6 +1507,7 @@ mod tests {
         assert!(text.contains("on the startup disk"), "{text}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_read_only_drive_is_flagged() {
         let mut d = Driver::new(ctx());
@@ -1511,6 +1518,7 @@ mod tests {
         assert!(text.contains("mounted read-only"), "{text}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn notes_of_a_removed_destination_are_dropped() {
         let source = tempfile::tempdir().unwrap();
@@ -1528,6 +1536,7 @@ mod tests {
         assert!(notes.is_empty(), "{notes:?}");
     }
 
+    #[cfg(unix)]
     #[test]
     fn re_record_looks_the_drive_up_again_and_keeps_the_id() {
         let mut d = Driver::new(Context {
@@ -1555,6 +1564,7 @@ mod tests {
         assert!(sub.form.field("rerecord").is_some_and(|f| !f.visible));
     }
 
+    #[cfg(unix)]
     #[test]
     fn re_record_never_drops_a_drive_without_a_second_press() {
         let mut job = existing();
@@ -1765,6 +1775,7 @@ mod tests {
         });
     }
 
+    #[cfg(unix)]
     #[test]
     fn job_form_renders_at_80_and_120_columns() {
         let form = JobForm::new(Context {

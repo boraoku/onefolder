@@ -1872,8 +1872,8 @@ mod tests {
         let mut text = String::from("version = 1\n");
         for name in names {
             text.push_str(&format!(
-                "\n[[jobs]]\nname = \"{name}\"\nsource = \"{src}\"\n\n  [[jobs.destinations]]\n  \
-                 id = \"d-{id}\"\n  type = \"local\"\n  path = \"{dst}\"\n",
+                "\n[[jobs]]\nname = \"{name}\"\nsource = '{src}'\n\n  [[jobs.destinations]]\n  \
+                 id = \"d-{id}\"\n  type = \"local\"\n  path = '{dst}'\n",
                 id = match *name {
                     "documents" => "0001",
                     "records" => "0002",
@@ -2077,8 +2077,8 @@ mod tests {
             ("photos", "d-0003"),
         ] {
             text.push_str(&format!(
-                "\n# The {name} job.\n[[jobs]]\nname = \"{name}\"\nsource = \"{src}\"\n\n  \
-                 [[jobs.destinations]]\n  id = \"{id}\"\n  type = \"local\"\n  path = \"{dst}\"\n",
+                "\n# The {name} job.\n[[jobs]]\nname = \"{name}\"\nsource = '{src}'\n\n  \
+                 [[jobs.destinations]]\n  id = \"{id}\"\n  type = \"local\"\n  path = '{dst}'\n",
                 src = dir.path().join(name).display(),
                 dst = dir.path().join(format!("{name}-copy")).display(),
             ));
@@ -2239,6 +2239,7 @@ mod tests {
         assert_eq!(replaced_pairs(&original, &moved).len(), 4);
     }
 
+    #[cfg(unix)]
     #[test]
     fn local_flag_values() {
         assert_eq!(

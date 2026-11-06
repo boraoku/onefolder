@@ -1004,7 +1004,21 @@ mod tests {
 
     /// Replaces the temp directory in rendered output so snapshots are stable.
     fn scrub(text: &str, root: &Path) -> String {
-        text.replace(&root.display().to_string(), "/TMP")
+        let text = text.replace(&root.display().to_string(), "/TMP");
+        if !cfg!(windows) {
+            return text;
+        }
+        // On Windows the paths under the folder are written with `\`; the
+        // snapshots have them with `/`.
+        let mut parts = text.split("/TMP");
+        let mut out = parts.next().unwrap_or_default().to_string();
+        for part in parts {
+            let end = part.find(char::is_whitespace).unwrap_or(part.len());
+            out.push_str("/TMP");
+            out.push_str(&part[..end].replace('\\', "/"));
+            out.push_str(&part[end..]);
+        }
+        out
     }
 
     fn paths(root: &Path) -> Paths {

@@ -1589,8 +1589,8 @@ mod tests {
             ("photos", "d-0003"),
         ] {
             text.push_str(&format!(
-                "\n[[jobs]]\nname = \"{name}\"\nsource = \"{src}\"\n\n  [[jobs.destinations]]\n  \
-                 id = \"{id}\"\n  type = \"local\"\n  path = \"{dst}\"\n",
+                "\n[[jobs]]\nname = \"{name}\"\nsource = '{src}'\n\n  [[jobs.destinations]]\n  \
+                 id = \"{id}\"\n  type = \"local\"\n  path = '{dst}'\n",
                 src = dir.path().join(name).display(),
                 dst = dir.path().join(format!("{name}-copy")).display(),
             ));
@@ -1732,13 +1732,13 @@ mod tests {
         };
         let dest = |id: &str, name: &str| {
             format!(
-                "\n  [[jobs.destinations]]\n  id = \"{id}\"\n  type = \"local\"\n  path = \"{}\"\n",
+                "\n  [[jobs.destinations]]\n  id = \"{id}\"\n  type = \"local\"\n  path = '{}'\n",
                 dir.path().join(name).display()
             )
         };
         let text = format!(
-            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = \"{}\"\n{}\n\
-             [[jobs]]\nname = \"records\"\nsource = \"{}\"\n{}{}{}",
+            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = '{}'\n{}\n\
+             [[jobs]]\nname = \"records\"\nsource = '{}'\n{}{}{}",
             dir.path().join("documents").display(),
             dest("d-0001", "documents-copy"),
             dir.path().join("records").display(),
