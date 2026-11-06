@@ -11,8 +11,10 @@ use tempfile::TempDir;
 
 /// The binary's words on this platform, as `crate::platform` picks them:
 /// macOS names the Mac and Homebrew; Linux names "this computer" and
-/// rclone's own installer (these tests keep `brew` off PATH).
+/// rclone's own installer (these tests keep `brew` off PATH); Windows
+/// names rclone's downloads and winget.
 const MAC: bool = cfg!(target_os = "macos");
+const WINDOWS: bool = cfg!(windows);
 // Used only by tests that fake rclone with `/bin/sh` scripts, so Unix only.
 #[cfg(unix)]
 const THIS_COMPUTER: &str = if MAC { "this Mac" } else { "this computer" };
@@ -24,6 +26,8 @@ const SYSTEM_DISK: &str = if MAC {
 };
 const INSTALL: &str = if MAC {
     "install it with: brew install rclone"
+} else if WINDOWS {
+    "install it from https://rclone.org/install/ (or winget install Rclone.Rclone)"
 } else {
     "install it from https://rclone.org/install/ (or brew install rclone with Homebrew)"
 };
@@ -39,6 +43,13 @@ const BREW_MESSAGE: &str = if MAC {
 OneFolder needs rclone 1.66 or newer, and it is not on your PATH.
 
   Install it with Homebrew:   brew install rclone
+  Then run onefolder again.
+"
+} else if WINDOWS {
+    "\
+OneFolder needs rclone 1.66 or newer, and it is not on your PATH.
+
+  Install it from https://rclone.org/install/ (or winget install Rclone.Rclone)
   Then run onefolder again.
 "
 } else {
@@ -369,8 +380,8 @@ fn doctor_prunes_logs() {
     std::fs::write(
         home.path().join("config/config.toml"),
         format!(
-            "version = 1\n[[jobs]]\nname = \"documents\"\nsource = \"{}\"\n\n  \
-             [[jobs.destinations]]\n  id = \"d-7f3a\"\n  type = \"local\"\n  path = \"{}\"\n",
+            "version = 1\n[[jobs]]\nname = \"documents\"\nsource = '{}'\n\n  \
+             [[jobs.destinations]]\n  id = \"d-7f3a\"\n  type = \"local\"\n  path = '{}'\n",
             home.path().join("src").display(),
             home.path().join("dst").display()
         ),
@@ -436,8 +447,8 @@ fn status_without_rclone_and_its_exit_codes() {
         home.path().join("config/config.toml"),
         format!(
             "version = 1\n\n[[accounts]]\nlabel = \"work\"\nremote = \"onefolder-work\"\n\
-             drive_type = \"business\"\n\n[[jobs]]\nname = \"documents\"\nsource = \"{}\"\n\n  \
-             [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = \"{}\"\n\n  \
+             drive_type = \"business\"\n\n[[jobs]]\nname = \"documents\"\nsource = '{}'\n\n  \
+             [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = '{}'\n\n  \
              [[jobs.destinations]]\n  id = \"d-0002\"\n  type = \"onedrive\"\n  account = \"work\"\n  \
              path = \"Docs\"\n  mode = \"two-way\"\n",
             src.display(),
@@ -529,8 +540,8 @@ fn release_lifts_a_hold() {
     std::fs::write(
         home.path().join("config/config.toml"),
         format!(
-            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = \"{}\"\n\n  \
-             [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = \"{}\"\n  mode = \"two-way\"\n",
+            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = '{}'\n\n  \
+             [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = '{}'\n  mode = \"two-way\"\n",
             src.display(),
             home.path().join("dst").display()
         ),
@@ -1558,8 +1569,8 @@ fn config_with_recorded_drive(home: &TempDir, mount: &std::path::Path) {
     std::fs::write(
         home.path().join("config/config.toml"),
         format!(
-            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = \"{}\"\n\n  \
-             [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = \"{}\"\n  \
+            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = '{}'\n\n  \
+             [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = '{}'\n  \
              volume_uuid = \"A1B2C3D4-0000-4E5F-8A9B-000000000001\"\n  volume_name = \"Backup\"\n  \
              mount_point = \"{}\"\n",
             src.display(),
@@ -1842,7 +1853,7 @@ fn run_json_dry_run_reports_progress() {
     std::fs::write(
         root.join("config/config.toml"),
         format!(
-            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = \"{}\"\n\n  [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = \"{}\"\n",
+            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = '{}'\n\n  [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = '{}'\n",
             src.display(),
             dst.display()
         ),
@@ -1921,8 +1932,8 @@ fn moves_ask_without_a_terminal_uploads_again() {
     std::fs::write(
         root.join("config/config.toml"),
         format!(
-            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = \"{}\"\n\n  \
-             [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = \"{}\"\n",
+            "version = 1\n\n[[jobs]]\nname = \"documents\"\nsource = '{}'\n\n  \
+             [[jobs.destinations]]\n  id = \"d-0001\"\n  type = \"local\"\n  path = '{}'\n",
             src.display(),
             dst.display()
         ),
