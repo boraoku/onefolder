@@ -83,7 +83,7 @@ impl Drop for Registered {
 }
 
 /// The process ids of the registered children (for tests).
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn registered() -> Vec<u32> {
     CHILDREN.lock().map(|l| l.clone()).unwrap_or_default()
 }
