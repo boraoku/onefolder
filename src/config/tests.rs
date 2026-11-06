@@ -810,3 +810,31 @@ fn copy_hidden_defaults_to_off_and_round_trips_with_comments() {
     assert_eq!(text.matches("copy_hidden").count(), 1, "{text}");
     assert!(text.contains("copy_hidden = true"), "{text}");
 }
+
+/// On Windows the drive is part of the path: the same folders on two
+/// drives never overlap, and `\?\D:\` (as canonicalize writes it) is the
+/// same drive as `D:\`.
+#[cfg(windows)]
+#[test]
+fn folders_on_two_windows_drives_never_overlap() {
+    let o = |a: &str, b: &str| overlap(Path::new(a), Path::new(b));
+    assert_eq!(
+        o(r"C:\Users\bora\Documents", r"D:\Users\bora\Documents"),
+        None
+    );
+    assert_eq!(o(r"C:\Docs", r"D:\Docs\Backup"), None);
+    assert_eq!(
+        o(r"C:\Docs", r"c:\docs\Backup"),
+        Some("is inside the source folder")
+    );
+    assert_eq!(
+        o(r"\\?\D:\Docs", r"D:\Docs"),
+        Some("is the source folder itself")
+    );
+    assert_eq!(
+        o(r"D:\..\Docs", r"D:\Docs"),
+        Some("is the source folder itself")
+    );
+    assert_eq!(o(r"D:\Docs", r"D:\"), Some("contains the source folder"));
+    assert_eq!(o(r"\\nas\share\Docs", r"\\nas\other\Docs"), None);
+}

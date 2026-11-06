@@ -406,7 +406,11 @@ impl VolumeError {
                     )
                 ),
             },
-            VolumeError::NotAbsolute { .. } => "Give the full path, starting with /.".to_string(),
+            VolumeError::NotAbsolute { .. } => match host::ui_os() {
+                host::Os::Windows => r"Give the full path, starting with a drive such as D:\."
+                    .to_string(),
+                _ => "Give the full path, starting with /.".to_string(),
+            },
             VolumeError::Probe { path, message } => format!("{path}: {message}"),
             VolumeError::NotAnswering { path, limit } => {
                 format!("{path} {}", not_answering_words(*limit))
@@ -1796,7 +1800,7 @@ mod tests {
     #[test]
     fn windows_drives_and_identities() {
         assert!(is_under_drives(Path::new(r"D:\Backup\Docs")));
-        assert!(is_under_drives(Path::new(r"\nas\share\Docs")));
+        assert!(is_under_drives(Path::new(r"\\nas\share\Docs")));
         assert!(!is_under_drives(Path::new(r"C:\Users\bora\Documents")));
         assert!(!is_under_drives(Path::new("/Volumes/Backup/Docs")));
         assert_eq!(
@@ -1808,7 +1812,7 @@ mod tests {
 
         let local = mount(
             r"D:\",
-            r"\?\Volume{3f2504e0-4f89-11d3-9a0c-0305e82c3301}\",
+            r"\\?\Volume{3f2504e0-4f89-11d3-9a0c-0305e82c3301}\",
             "exfat",
         );
         assert!(!is_network(&local));
@@ -1924,6 +1928,7 @@ mod tests {
         assert!(!format!("{ro}{wrong}").contains('\u{2014}'), "no em-dashes");
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_drive_mounted_elsewhere_says_where_and_what_to_do() {
         let e = VolumeError::NotMounted {

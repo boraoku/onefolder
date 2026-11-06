@@ -343,6 +343,26 @@ pub fn placeholder_drive_path_on(os: Os, user: Option<&str>) -> String {
     }
 }
 
+/// How a full path starts, for the form's message about one that is not:
+/// `starting with / or ~`, on Windows with a drive.
+pub fn full_path_start_on(os: Os) -> &'static str {
+    match os {
+        Os::Windows => r"starting with a drive such as D:\ or with ~",
+        _ => "starting with / or ~",
+    }
+}
+
+/// [`full_path_start_on`] for the platform the screens describe.
+pub fn full_path_start() -> &'static str {
+    full_path_start_on(ui_os())
+}
+
+/// True when text reads as a local path to shorten as one: it starts with
+/// `/` or `~`, or on any platform with a Windows drive or share.
+pub fn looks_like_local_path(text: &str) -> bool {
+    text.starts_with('/') || text.starts_with('~') || windows_drive_root(text).is_some()
+}
+
 /// [`placeholder_drive_path_on`] for the platform the screens describe.
 pub fn placeholder_drive_path() -> String {
     placeholder_drive_path_on(ui_os(), user_name().as_deref())

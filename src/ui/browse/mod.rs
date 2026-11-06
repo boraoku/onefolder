@@ -213,12 +213,15 @@ pub fn local_start(value: &str) -> String {
 }
 
 /// `folder` and `name` joined for the place: `/a` + `b` is `/a/b`, `/` +
-/// `b` is `/b`; on OneDrive the root is empty.
+/// `b` is `/b`; on OneDrive the root is empty. A Windows folder (`D:\a`)
+/// is joined with a backslash.
 fn join(folder: &str, name: &str) -> String {
     if folder.is_empty() {
         name.to_string()
-    } else if folder.ends_with('/') {
+    } else if folder.ends_with('/') || folder.ends_with('\\') {
         format!("{folder}{name}")
+    } else if crate::platform::windows_drive_root(folder).is_some() {
+        format!(r"{folder}\{name}")
     } else {
         format!("{folder}/{name}")
     }

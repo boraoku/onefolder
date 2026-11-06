@@ -974,7 +974,10 @@ fn local_path(typed: &str) -> Result<PathBuf, String> {
         return Err("needs a folder".into());
     }
     if !Path::new(&config::expand_tilde(typed)).is_absolute() {
-        return Err("give the full path, starting with / or ~".into());
+        return Err(format!(
+            "give the full path, {}",
+            crate::platform::full_path_start()
+        ));
     }
     config::absolute(typed).ok_or_else(|| "needs a folder".to_string())
 }
