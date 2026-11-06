@@ -1104,6 +1104,7 @@ dependencies = [
  "tui-input",
  "unicode-normalization",
  "unicode-width",
+ "windows-sys",
 ]
 
 [[package]]

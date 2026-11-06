@@ -11,6 +11,8 @@ mod state;
 mod sync;
 mod ui;
 mod volume;
+#[cfg(windows)]
+mod win;
 
 use std::process::ExitCode;
 

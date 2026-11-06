@@ -821,7 +821,13 @@ pub fn pid_alive(pid: i32) -> bool {
     }
 }
 
-#[cfg(not(unix))]
+/// True when a process with this id is running.
+#[cfg(windows)]
+pub fn pid_alive(pid: i32) -> bool {
+    u32::try_from(pid).is_ok_and(|pid| pid > 0 && crate::win::pid_alive(pid))
+}
+
+#[cfg(not(any(unix, windows)))]
 pub fn pid_alive(pid: i32) -> bool {
     pid > 0
 }
@@ -845,6 +851,7 @@ pub fn lock_is_live(info: LockInfo, alive: bool, command: Option<&str>, boot: Op
 
 /// The name of a running process: `/proc/<pid>/comm` on Linux, no
 /// process spawned; `ps -p <pid> -o comm=` elsewhere.
+#[cfg(not(windows))]
 pub(crate) async fn process_name(pid: i32) -> Option<String> {
     if cfg!(target_os = "linux") {
         let name = fs::read_to_string(format!("/proc/{pid}/comm")).ok()?;
@@ -859,9 +866,22 @@ pub(crate) async fn process_name(pid: i32) -> Option<String> {
     (out.status.success() && !name.is_empty()).then_some(name)
 }
 
+/// The name of a running process (`rclone.exe`), from a process snapshot.
+#[cfg(windows)]
+pub(crate) async fn process_name(pid: i32) -> Option<String> {
+    crate::win::process_name(u32::try_from(pid).ok()?)
+}
+
+/// When the computer started, in Unix seconds: now less the time since.
+#[cfg(windows)]
+pub(crate) async fn boot_time() -> Option<i64> {
+    crate::win::boot_time()
+}
+
 /// When the computer started, in Unix seconds: `btime` in `/proc/stat` on
 /// Linux, `sysctl -n kern.boottime` (`{ sec = 1760313600, usec = 0 }
 /// ...`) on macOS.
+#[cfg(not(windows))]
 pub(crate) async fn boot_time() -> Option<i64> {
     if cfg!(target_os = "linux") {
         return parse_proc_stat_btime(&fs::read_to_string("/proc/stat").ok()?);
@@ -873,6 +893,7 @@ pub(crate) async fn boot_time() -> Option<i64> {
 }
 
 /// Reads `sysctl -n kern.boottime` output.
+#[cfg_attr(windows, allow(dead_code))]
 pub fn parse_boot_time(text: &str) -> Option<i64> {
     let rest = text.split_once("sec =")?.1;
     rest.trim_start()
@@ -884,6 +905,7 @@ pub fn parse_boot_time(text: &str) -> Option<i64> {
 
 /// Reads the `btime` line of Linux's `/proc/stat` (the boot time, in Unix
 /// seconds).
+#[cfg_attr(windows, allow(dead_code))]
 pub fn parse_proc_stat_btime(text: &str) -> Option<i64> {
     text.lines()
         .find_map(|line| line.strip_prefix("btime "))
@@ -1372,13 +1394,21 @@ mod tests {
                 path: lock.clone()
             }
         );
-        // A process that has exited.
-        let mut child = std::process::Command::new("/bin/sh")
-            .args(["-c", "exit 0"])
-            .spawn()
-            .unwrap();
-        let gone = i32::try_from(child.id()).unwrap();
-        child.wait().unwrap();
+        // A process that has exited (and whose handle is closed, which on
+        // Windows is when its entry goes).
+        let gone = {
+            let (shell, args) = if cfg!(windows) {
+                ("cmd", ["/C", "exit 0"])
+            } else {
+                ("/bin/sh", ["-c", "exit 0"])
+            };
+            let mut child = std::process::Command::new(shell)
+                .args(args)
+                .spawn()
+                .unwrap();
+            child.wait().unwrap();
+            i32::try_from(child.id()).unwrap()
+        };
         fs::write(&lock, format!(r#"{{"PID":"{gone}"}}"#)).unwrap();
         assert_eq!(
             check_lock(dir.path()).await,
@@ -1391,7 +1421,10 @@ mod tests {
         if let Ok(rclone) = crate::rclone::detect::detect().await {
             let mut rcd = std::process::Command::new(&rclone.path)
                 .args(["rcd", "--rc-addr", "127.0.0.1:0", "--rc-no-auth"])
-                .env("RCLONE_CONFIG", "/dev/null")
+                .env(
+                    "RCLONE_CONFIG",
+                    if cfg!(windows) { "NUL" } else { "/dev/null" },
+                )
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .spawn()

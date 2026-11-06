@@ -103,7 +103,11 @@ fn kill_registered() {
             );
         }
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
+    for pid in pids {
+        crate::win::terminate(pid);
+    }
+    #[cfg(not(any(unix, windows)))]
     drop(pids);
 }
 
@@ -194,6 +198,8 @@ pub async fn run_capture_detached(program: &Path, args: &[String]) -> Result<Cap
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
+    #[cfg(windows)]
+    command.creation_flags(crate::win::CREATE_NEW_PROCESS_GROUP);
     let output = command.output().await.map_err(|source| ExecError::Spawn {
         program: program.to_path_buf(),
         source,
@@ -448,10 +454,40 @@ impl Signals {
     }
 }
 
-#[cfg(not(unix))]
+/// The console events the dispatcher owns on Windows: Ctrl-C and
+/// Ctrl-Break, read as SIGINT, and the console window closing, read as
+/// SIGHUP (Windows allows a few seconds to clean up).
+#[cfg(windows)]
+struct Signals {
+    c: tokio::signal::windows::CtrlC,
+    brk: tokio::signal::windows::CtrlBreak,
+    close: tokio::signal::windows::CtrlClose,
+}
+
+#[cfg(windows)]
+impl Signals {
+    fn install() -> Option<Signals> {
+        use tokio::signal::windows::{ctrl_break, ctrl_c, ctrl_close};
+        Some(Signals {
+            c: ctrl_c().ok()?,
+            brk: ctrl_break().ok()?,
+            close: ctrl_close().ok()?,
+        })
+    }
+
+    async fn recv(&mut self) -> Option<i32> {
+        tokio::select! {
+            s = self.c.recv() => s.map(|()| 130),
+            s = self.brk.recv() => s.map(|()| 130),
+            s = self.close.recv() => s.map(|()| 129),
+        }
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 struct Signals;
 
-#[cfg(not(unix))]
+#[cfg(not(any(unix, windows)))]
 impl Signals {
     fn install() -> Option<Signals> {
         Some(Signals)
@@ -830,6 +866,8 @@ pub async fn run_streaming_with_grace(
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
+    #[cfg(windows)]
+    command.creation_flags(crate::win::CREATE_NEW_PROCESS_GROUP);
     let mut log_file = None;
     if let Some(log) = log {
         log.command(program, args);
@@ -963,7 +1001,15 @@ fn send_interrupt(child: &tokio::process::Child) -> bool {
     kill(Pid::from_raw(pid), Signal::SIGINT).is_ok()
 }
 
-#[cfg(not(unix))]
+/// Sends Ctrl-Break to the child's process group (it was started with one
+/// of its own), which rclone reads as SIGINT. False when it could not be
+/// sent.
+#[cfg(windows)]
+fn send_interrupt(child: &tokio::process::Child) -> bool {
+    child.id().is_some_and(crate::win::ctrl_break)
+}
+
+#[cfg(not(any(unix, windows)))]
 fn send_interrupt(_child: &tokio::process::Child) -> bool {
     false
 }
@@ -993,7 +1039,16 @@ fn stderr_handle() -> Stdio {
     }
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+fn stderr_handle() -> Stdio {
+    use std::os::windows::io::AsHandle;
+    match std::io::stderr().as_handle().try_clone_to_owned() {
+        Ok(handle) => Stdio::from(handle),
+        Err(_) => Stdio::null(),
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
 fn stderr_handle() -> Stdio {
     Stdio::null()
 }
