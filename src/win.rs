@@ -11,6 +11,12 @@ use windows_sys::Win32::System::Console::{GenerateConsoleCtrlEvent, CTRL_BREAK_E
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
+use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
+    JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
+    TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+};
 use windows_sys::Win32::System::SystemInformation::GetTickCount64;
 use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
 
@@ -88,6 +94,71 @@ pub fn boot_time() -> Option<i64> {
     // SAFETY: plain call with no arguments.
     let up_ms = unsafe { GetTickCount64() };
     i64::try_from(now.checked_sub(up_ms / 1000)?).ok()
+}
+
+/// A job object holding a child and every process it starts, so the
+/// whole tree can be waited for and ended. rclone is often not started
+/// directly: a Chocolatey or Scoop `rclone.exe` is a launcher (a "shim")
+/// that starts the real rclone as its own child. Ctrl-Break reaches both,
+/// the shim ends at once, and the real rclone goes on stopping cleanly;
+/// only the job knows when it has. Closing the job (dropping this) ends
+/// whatever is still in it, as `kill_on_drop` does for the child alone.
+pub struct Job(Handle);
+
+impl Job {
+    /// Puts the process behind `process` (a child's handle) in a new job.
+    /// `None` when Windows refuses; the child then runs as before.
+    pub fn assign(process: std::os::windows::io::RawHandle) -> Option<Job> {
+        // SAFETY: plain call; no security attributes and no name.
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if job.is_null() {
+            return None;
+        }
+        let job = Job(Handle(job));
+        // SAFETY: the limit information is plain data, valid when zeroed.
+        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: `job` is open and `limits` is the size passed.
+        let set = unsafe {
+            SetInformationJobObject(
+                (job.0).0,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        // SAFETY: both handles are open; the process handle stays the
+        // child's own.
+        let assigned = unsafe { AssignProcessToJobObject((job.0).0, process as HANDLE) };
+        (set != 0 && assigned != 0).then_some(job)
+    }
+
+    /// How many processes in the job are still running.
+    pub fn active(&self) -> u32 {
+        // SAFETY: the accounting information is plain data, valid when zeroed.
+        let mut info: JOBOBJECT_BASIC_ACCOUNTING_INFORMATION = unsafe { std::mem::zeroed() };
+        // SAFETY: the job is open and `info` is the size passed.
+        let ok = unsafe {
+            QueryInformationJobObject(
+                (self.0).0,
+                JobObjectBasicAccountingInformation,
+                (&mut info as *mut JOBOBJECT_BASIC_ACCOUNTING_INFORMATION).cast(),
+                std::mem::size_of::<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION>() as u32,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            0
+        } else {
+            info.ActiveProcesses
+        }
+    }
+
+    /// Ends every process in the job at once.
+    pub fn terminate(&self) {
+        // SAFETY: the job is open.
+        unsafe { TerminateJobObject((self.0).0, 1) };
+    }
 }
 
 /// Ends a process at once, as SIGKILL does. False when it could not.

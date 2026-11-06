@@ -878,6 +878,7 @@ pub async fn run_streaming_with_grace(
         program: program.to_path_buf(),
         source,
     })?;
+    let tree = tree_of(&child);
 
     let (tx, mut rx) = mpsc::channel::<Event>(256);
     let reader = child.stderr.take().map(|stderr| {
@@ -929,7 +930,7 @@ pub async fn run_streaming_with_grace(
                 Some(event) => on(Progress::Event(event)),
                 None => open = false,
             },
-            waited = child.wait(), if status.is_none() => {
+            waited = wait_tree(&mut child, tree.as_ref()), if status.is_none() => {
                 status = Some(waited.map_err(|source| ExecError::Wait {
                     program: program.to_path_buf(),
                     source,
@@ -940,13 +941,13 @@ pub async fn run_streaming_with_grace(
                 presses += 1;
                 if presses == 1 {
                     if !send_interrupt(&child) {
-                        let _ = child.start_kill();
+                        kill_tree(&mut child, tree.as_ref());
                         killed = true;
                     }
                     kill_at = Some(Instant::now() + grace);
                     on(Progress::Stopping);
                 } else if !killed {
-                    let _ = child.start_kill();
+                    kill_tree(&mut child, tree.as_ref());
                     killed = true;
                     on(Progress::Killing);
                 }
@@ -954,7 +955,7 @@ pub async fn run_streaming_with_grace(
             () = sleep_until(deadline) => {
                 if status.is_none() {
                     // No exit within the grace period after SIGINT.
-                    let _ = child.start_kill();
+                    kill_tree(&mut child, tree.as_ref());
                     killed = true;
                     kill_at = None;
                     on(Progress::Killing);
@@ -981,6 +982,59 @@ pub async fn run_streaming_with_grace(
         cancelled: presses > 0,
         killed,
     })
+}
+
+/// The processes a child may start, held so they can be waited for and
+/// ended with it: a job object on Windows (see [`crate::win::Job`]), where
+/// rclone may be a launcher that starts the real rclone; nothing elsewhere,
+/// where rclone is the child itself.
+#[cfg(windows)]
+use crate::win::Job as Tree;
+
+#[cfg(not(windows))]
+#[allow(dead_code, reason = "never made off Windows")]
+struct Tree;
+
+#[cfg(not(windows))]
+impl Tree {
+    fn active(&self) -> u32 {
+        0
+    }
+
+    fn terminate(&self) {}
+}
+
+#[cfg(windows)]
+fn tree_of(child: &tokio::process::Child) -> Option<Tree> {
+    child.raw_handle().and_then(Tree::assign)
+}
+
+#[cfg(not(windows))]
+fn tree_of(_child: &tokio::process::Child) -> Option<Tree> {
+    None
+}
+
+/// Waits for the child, and then for every process it started that is
+/// still running (the real rclone behind a launcher, stopping cleanly).
+async fn wait_tree(
+    child: &mut tokio::process::Child,
+    tree: Option<&Tree>,
+) -> io::Result<ExitStatus> {
+    let status = child.wait().await?;
+    if let Some(tree) = tree {
+        while tree.active() > 0 {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+    Ok(status)
+}
+
+/// Kills the child and every process it started.
+fn kill_tree(child: &mut tokio::process::Child, tree: Option<&Tree>) {
+    if let Some(tree) = tree {
+        tree.terminate();
+    }
+    let _ = child.start_kill();
 }
 
 async fn sleep_until(deadline: Option<Instant>) {
