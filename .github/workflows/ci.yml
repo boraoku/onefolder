@@ -129,6 +129,10 @@ jobs:
           & $of status
           Check 'status'
           & $of doctor
+      - name: Ctrl-C stops rclone cleanly (one-way and two-way)
+        env:
+          ONEFOLDER_INTEGRATION: "1"
+        run: cargo test --test windows -- --nocapture
 
   # dist plans every target (macOS and Linux) from one machine.
   release-plan:

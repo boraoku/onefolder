@@ -65,6 +65,10 @@ insta = { version = "1.49.0", features = ["json"] }
 predicates = "3.1.4"
 tempfile = "3.27.0"
 
+# tests/windows.rs presses Ctrl-Break in OneFolder's console group.
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Console"] }
+
 # The profile release builds use (dist builds with it on GitHub Actions).
 [profile.dist]
 inherits = "release"
